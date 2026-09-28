@@ -1,3 +1,5 @@
+import { getRecentLogs } from "./logger.js";
+
 const matrix = {};
 let lastResponse = null;
 let totalRequests = 0;
@@ -36,6 +38,7 @@ export function getAnalyticsSnapshot(discoveryData, allKeys) {
     totalRequests,
     lastResponse,
     matrix: formattedMatrix,
+    logs: getRecentLogs(), // Логи готовы для отображения в дашборде
     discovery: discoveryData ? {
       lastUpdated: new Date(discoveryData.lastUpdated).toISOString(),
       rawCount: discoveryData.rawModels.length,

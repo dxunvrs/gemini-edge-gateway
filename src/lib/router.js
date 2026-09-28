@@ -1,5 +1,6 @@
 import { createGeminiStreamPipeline } from "./stream.js";
 import { recordSuccess } from "./analytics.js";
+import { log } from "./logger.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
@@ -69,6 +70,17 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
   // Стратификация на 40 групп
   const groups = splitIntoGroups(allPairs, MAX_SUBREQUESTS);
 
+  log("info", "New chat completion request", {
+    user: currentUser,
+    targetCascade: requestedModel.includes("lite") ? "lite" : "smart",
+    totalStrata: groups.length,
+    activeKeysCount: activeKeys.length,
+  });
+
+  // BASE64: Сериализуем огромный payload ровно один раз
+  body.model = "__ROUTER_MODEL_SLOT__";
+  const templatePayload = JSON.stringify(body);
+
   let lastFailedModel = targetCascade[0];
   let lastFailedKeyId = "";
   let lastErrorDetails = null;
@@ -80,7 +92,10 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
 
     lastFailedModel = candidate.model;
     lastFailedKeyId = candidate.keyItem.id;
-    body.model = candidate.model;
+
+    // Быстрая строковая подстановка модели без повторного парсинга base64 картинок
+    const payload = templatePayload.replace('"__ROUTER_MODEL_SLOT__"', JSON.stringify(candidate.model));
+    const startTime = Date.now();
 
     try {
       const response = await fetch(DEFAULT_GOOGLE_ENDPOINT, {
@@ -89,10 +104,19 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
           "Content-Type": "application/json",
           "Authorization": `Bearer ${candidate.keyItem.key}`,
         },
-        body: JSON.stringify(body),
+        body: payload,
       });
 
+      const durationMs = Date.now() - startTime;
+
       if (!response.ok) {
+        log("warn", "Stratum attempt failed", {
+          stratum: `${g + 1}/${groups.length}`,
+          model: candidate.model,
+          key: candidate.keyItem.id,
+          status: response.status,
+          durationMs,
+        });
         // Если это не последняя попытка — мгновенно сбрасываем стрим без чтения текста
         if (g < groups.length - 1) {
           response.body?.cancel().catch(() => { });
@@ -104,6 +128,13 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
       }
 
       // Успех: фиксируем в аналитике и отдаем поток
+      log("success", "Response streaming started", {
+        stratum: `${g + 1}/${groups.length}`,
+        model: candidate.model,
+        key: candidate.keyItem.id,
+        durationMs,
+      });
+
       recordSuccess(candidate.model, candidate.keyItem.id, currentUser);
 
       const streamPipeline = createGeminiStreamPipeline();
@@ -118,12 +149,25 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
         headers,
       });
     } catch (err) {
+      log("warn", "Network or fetch error during attempt", {
+        stratum: `${g + 1}/${groups.length}`,
+        model: candidate.model,
+        key: candidate.keyItem.id,
+        error: err.message,
+      });
+
       if (g === groups.length - 1) {
         lastErrorDetails = err.message;
       }
       continue;
     }
   }
+
+  log("error", "All strata exhausted", {
+    attemptsMade: groups.length,
+    lastFailedModel,
+    lastFailedKey: lastFailedKeyId,
+  });
 
   return new Response(
     JSON.stringify({
