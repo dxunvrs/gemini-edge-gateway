@@ -1,0 +1,641 @@
+/* Локальные оригинальные шрифты Aspen Search (Suisse Intl) */
+@font-face {
+  font-family: "SuisseIntl";
+  src: url("/assets/fonts/SuisseIntl-Regular.woff2") format("woff2");
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SuisseIntl";
+  src: url("/assets/fonts/SuisseIntl-Bold.woff2") format("woff2");
+  font-weight: 600 700 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SuisseIntlMono";
+  src: url("/assets/fonts/SuisseIntlMono-Regular.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Палитра Aspen Search */
+  --bg-top: #ffffff;
+  --bg-left: #d8d8d8;
+  --bg-right: #1f1f1f;
+  --bg-right-header: #141414;
+  --bg-right-hover: rgba(255, 255, 255, 0.04);
+  --bg-table-header-left: rgba(0, 0, 0, 0.05);
+
+  --text-dark: #1f1f1f;
+  --text-light: #ffffff;
+  --text-muted: rgba(31, 31, 31, 0.6);
+  --text-muted-dark: rgba(255, 255, 255, 0.45);
+
+  --accent: #a1ffcb;
+
+  --border-dark: 1px solid #1f1f1f;
+  --border-light: 1px solid #333333;
+  --border-dashed: 1px dashed rgba(31, 31, 31, 0.25);
+
+  --color-success: #0d8342;
+  --color-error: #ff5252;
+  --color-warn: #ffd43b;
+  --color-info: #74c0fc;
+
+  /* Типографика Aspen */
+  --font-main: "SuisseIntl", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SuisseIntlMono", monospace;
+}
+
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-top);
+  color: var(--text-dark);
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =========================================================
+   ВЕРХНЯЯ ПАНЕЛЬ (ТОПИК)
+   ========================================================= */
+.top-nav {
+  display: flex;
+  background-color: var(--bg-top);
+  color: var(--text-dark);
+  border-bottom: var(--border-dark);
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Квадратик SP */
+.logo-box {
+  flex-shrink: 0;
+  background-color: var(--bg-right);
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-main);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  border: none;
+  border-right: var(--border-dark);
+  text-decoration: none;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+  transition: color 0.3s cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.logo-box::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--accent);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.35s cubic-bezier(0.2, 1, 0.3, 1);
+  z-index: -1;
+}
+
+.logo-box:hover {
+  color: var(--text-dark);
+}
+
+.logo-box:hover::before {
+  transform: scaleX(1);
+}
+
+/* Название проекта */
+.brand-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 17px;
+  text-transform: uppercase;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Кнопка REFRESH: hover как пункт меню в Aspen (черная плашка) */
+#refresh-btn {
+  background: transparent;
+  color: var(--text-dark);
+  border: none;
+  padding: 6px 14px;
+  font-family: var(--font-main);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#refresh-btn:hover {
+  background: var(--text-dark);
+  color: var(--text-light);
+}
+
+/* Индикатор статуса */
+.status-indicator {
+  font-family: var(--font-main);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Кнопка-ссылка GitHub Repo */
+.nav-btn-link {
+  flex-shrink: 0;
+  background: var(--bg-right);
+  color: var(--text-light);
+  border: none;
+  font-family: var(--font-main);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+  box-sizing: border-box;
+  transition: color 0.3s cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.nav-btn-link::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s cubic-bezier(0.2, 1, 0.3, 1);
+  z-index: -1;
+}
+
+.nav-btn-link:hover {
+  color: var(--text-dark);
+}
+
+.nav-btn-link:hover::before {
+  transform: scaleX(1);
+}
+
+/* ---------------------------------------------------------
+   ДЕКСТОПНЫЙ ХЕДЕР (>= 901px):
+   Строго 50/50 сетка.
+   Левая половина (50%): SP + Title (border-right 1px).
+   Правая половина (50%): REFRESH + STATUS + GITHUB REPO на краю.
+   --------------------------------------------------------- */
+@media (min-width: 901px) {
+  .top-nav {
+    flex-direction: row;
+    height: 64px;
+  }
+
+  .logo-box {
+    width: 64px;
+    height: 64px;
+  }
+
+  .brand-title {
+    flex: 0 0 calc(50% - 64px);
+    width: calc(50% - 64px);
+    height: 100%;
+    padding: 0 32px;
+    border-right: var(--border-dark);
+  }
+
+  #refresh-btn {
+    height: auto;
+    margin-left: 32px;
+    align-self: center;
+  }
+
+  .status-indicator {
+    padding-left: 20px;
+    height: 100%;
+  }
+
+  .nav-btn-link {
+    margin-left: auto;
+    height: 64px;
+    padding: 0 36px;
+    border-left: var(--border-dark);
+  }
+}
+
+/* ---------------------------------------------------------
+   МОБИЛЬНЫЙ ХЕДЕР (<= 900px):
+   CSS Grid из 2 строк:
+   Строка 1 (высота 56px): [SP 56px] [TITLE по центру] [GITHUB REPO во всю высоту]
+   Строка 2 (высота 40px): [REFRESH слева] ... [STATUS справа]
+   --------------------------------------------------------- */
+@media (max-width: 900px) {
+  .top-nav {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    grid-template-rows: 56px 40px;
+    grid-template-areas:
+      "logo title github"
+      "refresh . status";
+    height: auto;
+  }
+
+  .logo-box {
+    grid-area: logo;
+    width: 56px;
+    height: 56px;
+    font-size: 16px;
+    border-right: var(--border-dark);
+    border-bottom: var(--border-dark);
+  }
+
+  .brand-title {
+    grid-area: title;
+    justify-content: center;
+    padding: 0 12px;
+    font-size: 14px;
+    border-bottom: var(--border-dark);
+  }
+
+  .nav-btn-link {
+    grid-area: github;
+    height: 56px;
+    padding: 0 20px;
+    font-size: 13px;
+    border-left: var(--border-dark);
+    border-bottom: var(--border-dark);
+  }
+
+  #refresh-btn {
+    grid-area: refresh;
+    align-self: center;
+    justify-self: start;
+    margin-left: 12px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  .status-indicator {
+    grid-area: status;
+    align-self: center;
+    justify-self: end;
+    padding-right: 16px;
+    font-size: 12px;
+  }
+}
+
+/* =========================================================
+   ОСНОВНОЙ КОНТЕНТ (РАЗДЕЛЕНИЕ ЭКРАНА 50 / 50)
+   ========================================================= */
+.split-layout {
+  display: flex;
+  align-items: stretch;
+}
+
+.column {
+  flex: 0 0 50%;
+  width: 50%;
+  padding: 40px;
+}
+
+/* Левая серая колонка Aspen */
+.left-col {
+  background-color: var(--bg-left);
+  color: var(--text-dark);
+  border-right: var(--border-dark);
+}
+
+.section-block {
+  border-bottom: var(--border-dark);
+  padding-bottom: 32px;
+  margin-bottom: 32px;
+}
+
+.hero-text {
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.94;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+.section-num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.6;
+  margin-right: 8px;
+  vertical-align: 0;
+}
+
+.section-num-dark {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted-dark);
+  margin-right: 8px;
+  vertical-align: 0;
+}
+
+.sub-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.muted {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.summary-details div {
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.keys-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.key-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: var(--border-dashed);
+  padding: 4px 0;
+  font-size: 14px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.key-status-ok {
+  color: var(--color-success);
+}
+
+.key-status-bad {
+  color: var(--color-error);
+}
+
+/* Контейнер таблицы трафика */
+.scrollable-table-box {
+  width: 100%;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.left-col th,
+.left-col td {
+  border: var(--border-dark);
+  font-size: 13px;
+}
+
+.left-col th {
+  background-color: var(--bg-table-header-left);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Оформление информационного блока NOTE */
+.notice-box {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-left: 2px solid var(--text-dark);
+  padding: 8px 0 8px 14px;
+  margin-bottom: 24px;
+}
+
+.notice-tag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-dark);
+}
+
+.notice-text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-dark);
+}
+
+.models-trio {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 24px;
+}
+
+.list-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.regex-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.raw-list {
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.raw-list li {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.raw-list li::before {
+  content: "-";
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.6;
+}
+
+/* Правая тёмная колонка (Логи в стиле Aspen) */
+.right-col {
+  background-color: var(--bg-right);
+  color: var(--text-light);
+  display: flex;
+  flex-direction: column;
+}
+
+.right-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: var(--border-light);
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.terminal-title {
+  color: var(--text-light);
+  margin-bottom: 0;
+}
+
+.logs-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.logs-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Таблица логов: прозрачный фон ячеек, светлый текст, тонкие разделители */
+.right-col th,
+.right-col td {
+  background-color: transparent;
+  border: none;
+  border-bottom: var(--border-light);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-light);
+  white-space: nowrap;
+}
+
+.right-col th {
+  color: var(--text-light);
+  font-family: var(--font-main);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 10px 12px;
+}
+
+.right-col tr:hover td {
+  background-color: var(--bg-right-hover);
+}
+
+.lvl-error,
+.lvl-warn,
+.lvl-success {
+  font-weight: 700;
+}
+
+.lvl-error {
+  color: var(--color-error);
+}
+
+.lvl-warn {
+  color: var(--color-warn);
+}
+
+.lvl-success {
+  color: var(--accent);
+}
+
+.lvl-info {
+  color: var(--color-info);
+}
+
+/* Мобильный перенос колонок контента (<= 900px) */
+@media (max-width: 900px) {
+  .split-layout {
+    flex-direction: column;
+  }
+
+  .column {
+    flex: 0 0 100%;
+    width: 100%;
+    padding: 24px;
+  }
+
+  .left-col {
+    border-right: none;
+    border-bottom: var(--border-dark);
+  }
+
+  .hero-text {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+
+  .models-trio {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}

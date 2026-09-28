@@ -9,22 +9,16 @@ export default {
     const url = new URL(request.url);
     const { keys, authorizedUsers } = parseConfig(env);
 
-    // Авторизация
-    const authResult = authenticate(request, authorizedUsers);
-
-    // Эндпоинт статистики для дашборда
+    // Публичный эндпоинт аналитики (без пароля)
     if (url.pathname === "/api/stats") {
-      if (!authResult.ok) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
       try {
         const discovery = await getDiscoveryData(keys);
         const stats = getAnalyticsSnapshot(discovery, keys);
         return new Response(JSON.stringify(stats), {
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+          },
         });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), {
@@ -48,8 +42,9 @@ export default {
       );
     }
 
-    // Обработка промптов (/v1/chat/completions)
+    // Обработка промптов (/v1/chat/completions, уже по паролю)
     if (url.pathname.endsWith("/chat/completions")) {
+      const authResult = authenticate(request, authorizedUsers);
       if (!authResult.ok) {
         return new Response(JSON.stringify({ error: "Unauthorized: Invalid Access Token" }), {
           status: 401,
@@ -80,13 +75,6 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       }
-    }
-
-    // Главная страница (пока заглушка)
-    if (url.pathname === "/") {
-      return new Response("Gemini Edge Gateway is active. Use /api/stats or /v1/chat/completions.", {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
     }
 
     return new Response("Not Found", { status: 404 });

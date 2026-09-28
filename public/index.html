@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini Edge Gateway</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+
+<body>
+  <div class="top-nav">
+    <a href="https://github.com/sergeypugin" target="_blank" rel="noopener noreferrer" class="logo-box">SP</a>
+    <div class="brand-title">GEMINI EDGE GATEWAY</div>
+    <button id="refresh-btn">REFRESH</button>
+    <span id="gateway-status" class="status-indicator">CONNECTING</span>
+    <a href="https://github.com/sergeypugin/gemini-edge-gateway" target="_blank" rel="noopener noreferrer"
+      class="nav-btn-link">GitHub Repo</a>
+  </div>
+
+  <div class="split-layout">
+    <!-- Левая колонка -->
+    <div class="column left-col">
+      <div class="section-block">
+        <h1 class="hero-text">SYSTEM<br>OVERVIEW</h1>
+        <div id="stats-summary" class="summary-details">
+          <div><span class="muted">TOTAL SUCCESSFUL REQUESTS:</span> <span id="total-reqs">—</span></div>
+          <div><span class="muted">LAST RESPONSE:</span> <span id="last-resp">—</span></div>
+          <div><span class="muted">LAST DISCOVERY RUN:</span> <span id="last-disc">—</span></div>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h2 class="sub-title"><span class="section-num">01</span> KEY VALIDATION MATRIX</h2>
+        <div class="keys-grid" id="keys-status-container"></div>
+      </div>
+
+      <div class="section-block">
+        <h2 class="sub-title"><span class="section-num">02</span> TRAFFIC DISTRIBUTION MATRIX</h2>
+        <div class="scrollable-table-box">
+          <table id="matrix-table">
+            <thead></thead>
+            <tbody>
+              <tr>
+                <td>NO DATA RECORDED</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <div class="notice-box">
+          <span class="notice-tag">NOTE</span>
+          <span class="notice-text">Smart &amp; Lite cascades are completely free to use via rotating API quotas</span>
+        </div>
+        <div class="models-trio">
+          <div>
+            <h3 class="list-title"><span class="section-num">03</span> SMART CASCADE</h3>
+            <div class="regex-tag">/gemini/i &amp;&amp; !lite</div>
+            <ul id="smart-list" class="raw-list"></ul>
+          </div>
+          <div>
+            <h3 class="list-title"><span class="section-num">04</span> LITE CASCADE</h3>
+            <div class="regex-tag">/gemini/i &amp;&amp; lite</div>
+            <ul id="lite-list" class="raw-list"></ul>
+          </div>
+          <div>
+            <h3 class="list-title"><span class="section-num">05</span> ALL GOOGLE MODELS</h3>
+            <div class="regex-tag">GET /v1beta/models</div>
+            <ul id="raw-list" class="raw-list"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Правая колонка -->
+    <div class="column right-col">
+      <div class="right-header">
+        <h2 class="sub-title terminal-title"><span class="section-num-dark">06</span> EXECUTION LOGS</h2>
+        <span id="logs-counter" class="logs-meta">0 ENTRIES</span>
+      </div>
+
+      <div class="logs-container" id="logs-scroll-viewport">
+        <table id="logs-table">
+          <thead>
+            <tr>
+              <th>TIME</th>
+              <th>LEVEL</th>
+              <th>EVENT</th>
+              <th>MODEL</th>
+              <th>KEY</th>
+              <th>STATUS</th>
+              <th>RTT</th>
+            </tr>
+          </thead>
+          <tbody id="logs-tbody"></tbody>
+        </table>
+        <div id="logs-sentinel"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+
+</html>

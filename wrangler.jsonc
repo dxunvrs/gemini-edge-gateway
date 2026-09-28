@@ -5,19 +5,11 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "assets": {
+    "directory": "./public"
+  },
   // Smart Placement запускает воркер ближе к дата-центрам Google API
   "placement": {
     "mode": "smart"
   },
-  // Правило позволяет нативно импортировать .html и .css как текст (для дашборда)
-  "rules": [
-    {
-      "type": "Text",
-      "globs": [
-        "**/*.html",
-        "**/*.css"
-      ],
-      "fallthrough": true
-    }
-  ]
 }
