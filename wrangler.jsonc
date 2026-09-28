@@ -1,0 +1,23 @@
+{
+  "name": "gemini-edge-gateway",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-28",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // Smart Placement запускает воркер ближе к дата-центрам Google API
+  "placement": {
+    "mode": "smart"
+  },
+  // Правило позволяет нативно импортировать .html и .css как текст (для дашборда)
+  "rules": [
+    {
+      "type": "Text",
+      "globs": [
+        "**/*.html",
+        "**/*.css"
+      ],
+      "fallthrough": true
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "gemini-edge-gateway",
+  "version": "1.0.0",
+  "description": "Adaptive Edge Load Balancer & Gateway for Gemini in Zed IDE",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
