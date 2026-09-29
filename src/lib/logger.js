@@ -1,4 +1,4 @@
-const MAX_LOGS = 10_000;
+const MAX_LOGS = 1000;
 let memoryLogs = [];
 
 export function log(level, message, meta = {}, env = null, ctx = null) {
