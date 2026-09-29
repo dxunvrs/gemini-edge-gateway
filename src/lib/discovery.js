@@ -51,7 +51,7 @@ export async function getDiscoveryData(keys) {
 
   // Строгий фильтр чат-моделей: исключаем tts, transcribe, customtools, embedding, image
   const isChatModel = (name) => {
-    return /^gemini-\d+(\.\d+)?-(flash|flash-lite|pro)$/i.test(name.toLowerCase());
+    return /^gemini-\d+(\.\d+)?-(flash|flash-lite|pro)(-preview)?$/i.test(name.toLowerCase());
   };
 
   const chatModels = rawModels.filter(isChatModel);
