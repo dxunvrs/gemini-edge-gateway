@@ -1,5 +1,5 @@
 const MAX_LOGS = 10_000;
-const memoryLogs = [];
+let memoryLogs = [];
 
 export function log(level, message, meta = {}, env = null, ctx = null) {
   const entry = {

@@ -110,17 +110,25 @@ function renderNextLogsChunk() {
   if (renderedLogsCount >= allLogs.length) return;
 
   const nextSlice = allLogs.slice(renderedLogsCount, renderedLogsCount + LOGS_CHUNK_SIZE);
-  const rowsHtml = nextSlice.map(l => `
-    <tr>
-      <td>${(l.timestamp || "").split("T")[1]?.replace("Z", "") || ""}</td>
-      <td class="lvl-${l.level}">${(l.level || "").toUpperCase()}</td>
-      <td>${l.message || ""}</td>
-      <td>${l.model || "—"}</td>
-      <td>${l.key || "—"}</td>
-      <td>${l.status || "—"}</td>
-      <td>${l.durationMs != null ? l.durationMs + 'ms' : "—"}</td>
-    </tr>
-  `).join("");
+  const rowsHtml = nextSlice.map(l => {
+    let localTime = "—";
+    if (l.timestamp) {
+      const d = new Date(l.timestamp);
+      localTime = isNaN(d.getTime()) ? l.timestamp : d.toLocaleTimeString();
+    }
+
+    return `
+      <tr>
+        <td>${localTime}</td>
+        <td class="lvl-${l.level}">${(l.level || "").toUpperCase()}</td>
+        <td>${l.message || ""}</td>
+        <td>${l.model || "—"}</td>
+        <td>${l.key || "—"}</td>
+        <td>${l.status || "—"}</td>
+        <td>${l.durationMs != null ? l.durationMs + 'ms' : "—"}</td>
+      </tr>
+    `;
+  }).join("");
 
   logsTbody.insertAdjacentHTML("beforeend", rowsHtml);
   renderedLogsCount += nextSlice.length;
