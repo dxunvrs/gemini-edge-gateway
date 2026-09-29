@@ -1,10 +1,10 @@
-import { getRecentLogs } from "./logger.js";
+import { getPersistentLogs } from "./logger.js";
 
-const matrix = {};
+let matrix = {};
 let lastResponse = null;
 let totalRequests = 0;
 
-export function recordSuccess(model, keyId, user) {
+export function recordSuccess(model, keyId, user, env = null, ctx = null) {
   totalRequests += 1;
   lastResponse = {
     model,
@@ -17,10 +17,27 @@ export function recordSuccess(model, keyId, user) {
     matrix[model] = {};
   }
   matrix[model][keyId] = (matrix[model][keyId] || 0) + 1;
+
+  if (env?.GATEWAY_KV && ctx?.waitUntil) {
+    ctx.waitUntil(
+      env.GATEWAY_KV.put("gateway_stats", JSON.stringify({ matrix, lastResponse, totalRequests })).catch(() => { })
+    );
+  }
 }
 
-export function getAnalyticsSnapshot(discoveryData, allKeys) {
-  // Строим сводную матрицу с процентами
+export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
+  if (totalRequests === 0 && env?.GATEWAY_KV) {
+    try {
+      const saved = await env.GATEWAY_KV.get("gateway_stats", "json");
+      if (saved) {
+        matrix = saved.matrix || {};
+        lastResponse = saved.lastResponse || null;
+        totalRequests = saved.totalRequests || 0;
+      }
+    } catch { }
+  }
+
+  const logs = await getPersistentLogs(env);
   const formattedMatrix = {};
   const allModels = discoveryData ? [...discoveryData.smart, ...discoveryData.lite] : Object.keys(matrix);
   const uniqueModels = [...new Set(allModels)];
@@ -38,7 +55,7 @@ export function getAnalyticsSnapshot(discoveryData, allKeys) {
     totalRequests,
     lastResponse,
     matrix: formattedMatrix,
-    logs: getRecentLogs(), // Логи готовы для отображения в дашборде
+    logs,
     discovery: discoveryData ? {
       lastUpdated: new Date(discoveryData.lastUpdated).toISOString(),
       rawCount: discoveryData.rawModels.length,

@@ -17,10 +17,12 @@ export async function getDiscoveryData(keys) {
     return match ? parseFloat(match[1]) : 0;
   };
 
-  // Валидация ключей параллельным запросом к /v1beta/models
+  // Валидация ключей параллельным запросом с таймаутом 5 сек
   const keyValidationPromises = keys.map(async (k) => {
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${k.key}`);
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${k.key}`, {
+        signal: AbortSignal.timeout(5000),
+      });
       return { id: k.id, key: k.key, isValid: res.ok, status: res.status };
     } catch {
       return { id: k.id, key: k.key, isValid: false, status: 0 };
@@ -36,7 +38,9 @@ export async function getDiscoveryData(keys) {
   }
 
   // Получаем список моделей через первый активный ключ
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${activeKeys[0].key}`);
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${activeKeys[0].key}`, {
+    signal: AbortSignal.timeout(5000),
+  });
   if (!res.ok) {
     if (CACHED_DATA) return CACHED_DATA;
     throw new Error(`Failed to fetch models list: HTTP ${res.status}`);
@@ -58,6 +62,7 @@ export async function getDiscoveryData(keys) {
 
   CACHED_DATA = {
     rawModels,
+    chatModels,
     smart,
     lite,
     validatedKeys: validatedKeysResults,

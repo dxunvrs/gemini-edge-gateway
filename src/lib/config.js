@@ -8,7 +8,7 @@ export function parseConfig(env) {
         // Проверяем только отсутствие внутренних пробелов
         if (!/\s/.test(k)) {
           keys.push({
-            id: `${name.toUpperCase()} #${idx + 1}`,
+            id: parts.length > 1 ? `${name.toUpperCase()} #${idx + 1}` : name.toUpperCase(),
             key: k,
             envVar: name,
           });

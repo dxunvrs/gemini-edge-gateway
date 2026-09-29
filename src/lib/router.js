@@ -31,7 +31,7 @@ function normalizeReasoningEffort(effort) {
   return "medium";
 }
 
-export async function executeStratifiedRouting(request, body, currentUser, cascades, activeKeys) {
+export async function executeStratifiedRouting(request, body, currentUser, cascades, activeKeys, env = null, ctx = null) {
   const requestedModel = (body.model || "").toLowerCase();
   const targetCascade = (requestedModel.includes("lite") || requestedModel.includes("fast"))
     ? cascades.lite
@@ -76,7 +76,7 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
     targetCascade: requestedModel.includes("lite") ? "lite" : "smart",
     totalStrata: groups.length,
     activeKeysCount: activeKeys.length,
-  });
+  }, env, ctx);
 
   // BASE64: Сериализуем огромный payload ровно один раз
   body.model = "__ROUTER_MODEL_SLOT__";
@@ -118,7 +118,7 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
           key: candidate.keyItem.id,
           status: response.status,
           durationMs,
-        });
+        }, env, ctx);
         // Если это не последняя попытка — мгновенно сбрасываем стрим без чтения текста
         if (g < groups.length - 1) {
           response.body?.cancel().catch(() => { });
@@ -135,9 +135,9 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
         model: candidate.model,
         key: candidate.keyItem.id,
         durationMs,
-      });
+      }, env, ctx);
 
-      recordSuccess(candidate.model, candidate.keyItem.id, currentUser);
+      recordSuccess(candidate.model, candidate.keyItem.id, currentUser, env, ctx);
 
       const streamPipeline = createGeminiStreamPipeline();
       response.body.pipeTo(streamPipeline.writable).catch(() => { });
@@ -151,6 +151,8 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
         headers,
       });
     } catch (err) {
+      const durationMs = Date.now() - startTime;
+      const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
       log("warn", "Network or fetch error during attempt", {
         stratum: `${g + 1}/${groups.length}`,
         model: candidate.model,
@@ -158,7 +160,7 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
         status: isTimeout ? "TIMEOUT" : "ERR",
         durationMs,
         error: err.message,
-      });
+      }, env, ctx);
 
       if (g === groups.length - 1) {
         lastErrorDetails = isTimeout ? "Google API timed out after 30s" : err.message;
@@ -171,7 +173,7 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
     attemptsMade: groups.length,
     lastFailedModel,
     lastFailedKey: lastFailedKeyId,
-  });
+  }, env, ctx);
 
   return new Response(
     JSON.stringify({

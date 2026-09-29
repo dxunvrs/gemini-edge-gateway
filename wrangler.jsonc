@@ -12,4 +12,10 @@
   "placement": {
     "mode": "smart"
   },
+  "kv_namespaces": [
+    {
+      "binding": "GATEWAY_KV",
+      "id": "GATEWAY_KV"
+    }
+  ],
 }

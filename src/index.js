@@ -13,7 +13,7 @@ export default {
     if (url.pathname === "/api/stats") {
       try {
         const discovery = await getDiscoveryData(keys);
-        const stats = getAnalyticsSnapshot(discovery, keys);
+        const stats = await getAnalyticsSnapshot(discovery, keys, env);
         return new Response(JSON.stringify(stats), {
           headers: {
             "Content-Type": "application/json",
@@ -68,7 +68,7 @@ export default {
 
       try {
         const discovery = await getDiscoveryData(keys);
-        return await executeStratifiedRouting(request, body, authResult.user, discovery, discovery.activeKeys);
+        return await executeStratifiedRouting(request, body, authResult.user, discovery, discovery.activeKeys, env, ctx);
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
