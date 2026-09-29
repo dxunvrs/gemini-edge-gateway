@@ -45,8 +45,13 @@ export async function getDiscoveryData(keys) {
   const data = await res.json();
   const rawModels = (data.models || []).map((m) => m.name.replace(/^models\//, ""));
 
-  const allGemini = rawModels.filter((name) => /^gemini/i.test(name) && !name.includes("embedding"));
-  const sorted = allGemini.sort((a, b) => parseVer(b) - parseVer(a));
+  // Строгий фильтр чат-моделей: исключаем tts, transcribe, customtools, embedding, image
+  const isChatModel = (name) => {
+    return /^gemini-\d+(\.\d+)?-(flash|flash-lite|pro)$/i.test(name.toLowerCase());
+  };
+
+  const chatModels = rawModels.filter(isChatModel);
+  const sorted = chatModels.sort((a, b) => parseVer(b) - parseVer(a));
 
   const smart = sorted.filter((m) => !m.toLowerCase().includes("lite"));
   const lite = sorted.filter((m) => m.toLowerCase().includes("lite"));

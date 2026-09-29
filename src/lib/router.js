@@ -4,6 +4,7 @@ import { log } from "./logger.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
+const ATTEMPT_TIMEOUT_MS = 30000; // 30 секунд
 
 function splitIntoGroups(array, maxGroups) {
   const numGroups = Math.min(array.length, maxGroups);
@@ -105,6 +106,7 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
           "Authorization": `Bearer ${candidate.keyItem.key}`,
         },
         body: payload,
+        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
       });
 
       const durationMs = Date.now() - startTime;
@@ -153,11 +155,13 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
         stratum: `${g + 1}/${groups.length}`,
         model: candidate.model,
         key: candidate.keyItem.id,
+        status: isTimeout ? "TIMEOUT" : "ERR",
+        durationMs,
         error: err.message,
       });
 
       if (g === groups.length - 1) {
-        lastErrorDetails = err.message;
+        lastErrorDetails = isTimeout ? "Google API timed out after 30s" : err.message;
       }
       continue;
     }
