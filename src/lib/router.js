@@ -91,13 +91,10 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
   const targetCascade = isLite ? cascades.lite : cascades.smart;
 
-  // Санитизируем tool_calls только если они реально присутствуют в запросе
-  let preparedPayload = rawText;
-  if (rawText.includes('"tool_calls"')) {
-    preparedPayload = rawText
-      .replaceAll('"content":null', '"content":""')
-      .replaceAll('"type":"function"', '"thought_signature":"skip_thought_signature_validator","extra_content":{"google":{"thought_signature":"skip_thought_signature_validator"}},"type":"function"');
-  }
+  // Безопасно заменяем content: null только для сообщений, не трогая декларации tools
+  let preparedPayload = rawText.includes('"content":null')
+    ? rawText.replaceAll('"content":null', '"content":""')
+    : rawText;
 
   // Построение пар (Модель x Ключ)
   const allPairs = [];
@@ -146,9 +143,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     lastFailedModel = candidate.model;
     lastFailedKeyId = candidate.keyItem.id;
 
-    // Меняем модель только в первых 500 символах
-    const head = preparedPayload.slice(0, 500).replace(/"model"\s*:\s*"[^"]*"/i, `"model":"${candidate.model}"`);
-    const payload = head + preparedPayload.slice(500);
+    const payload = preparedPayload.replace(/^(\s*\{\s*)"model"\s*:\s*"[^"]*"/i, `$1"model":"${candidate.model}"`);
     const startTime = Date.now();
     let isTimeout = false;
 
