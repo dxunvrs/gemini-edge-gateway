@@ -27,7 +27,7 @@ export function log(level, message, meta = {}, env = null, ctx = null) {
 
   if (env?.GATEWAY_KV && ctx?.waitUntil) {
     ctx.waitUntil(
-      env.GATEWAY_KV.put("gateway_logs", JSON.stringify(memoryLogs.slice(0, 200))).catch(() => { })
+      env.GATEWAY_KV.put("gateway_logs", JSON.stringify(memoryLogs)).catch(() => { })
     );
   }
 }

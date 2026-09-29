@@ -134,6 +134,7 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
         stratum: `${g + 1}/${groups.length}`,
         model: candidate.model,
         key: candidate.keyItem.id,
+        status: 200,
         durationMs,
       }, env, ctx);
 
