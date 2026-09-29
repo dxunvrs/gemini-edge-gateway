@@ -85,29 +85,18 @@ function normalizeReasoningEffort(effort) {
   return "medium";
 }
 
-export async function executeStratifiedRouting(request, body, currentUser, cascades, activeKeys, env = null, ctx = null) {
-  const requestedModel = (body.model || "").toLowerCase();
-  const targetCascade = (requestedModel.includes("lite") || requestedModel.includes("fast"))
-    ? cascades.lite
-    : cascades.smart;
+export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
+  // Безопасно определяем модель по первым 500 символам
+  const headSnippet = rawText.slice(0, 500);
+  const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
+  const targetCascade = isLite ? cascades.lite : cascades.smart;
 
-  body.reasoning_effort = normalizeReasoningEffort(body.reasoning_effort);
-
-  // In-place санитизация сообщений (экономим CPU)
-  if (Array.isArray(body.messages)) {
-    for (let i = 0; i < body.messages.length; i++) {
-      const msg = body.messages[i];
-      if (msg.role === "assistant") {
-        if (msg.content === null) msg.content = "";
-        if (Array.isArray(msg.tool_calls)) {
-          for (let j = 0; j < msg.tool_calls.length; j++) {
-            const tc = msg.tool_calls[j];
-            tc.thought_signature = "skip_thought_signature_validator";
-            tc.extra_content = { google: { thought_signature: "skip_thought_signature_validator" } };
-          }
-        }
-      }
-    }
+  // Санитизируем tool_calls только если они реально присутствуют в запросе
+  let preparedPayload = rawText;
+  if (rawText.includes('"tool_calls"')) {
+    preparedPayload = rawText
+      .replaceAll('"content":null', '"content":""')
+      .replaceAll('"type":"function"', '"thought_signature":"skip_thought_signature_validator","extra_content":{"google":{"thought_signature":"skip_thought_signature_validator"}},"type":"function"');
   }
 
   // Построение пар (Модель x Ключ)
@@ -125,14 +114,10 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
 
   log("info", "New chat completion request", {
     user: currentUser,
-    targetCascade: requestedModel.includes("lite") ? "lite" : "smart",
+    targetCascade: isLite ? "lite" : "smart",
     totalStrata: groups.length,
     activeKeysCount: activeKeys.length,
   }, env, ctx);
-
-  // BASE64: Сериализуем огромный payload ровно один раз
-  body.model = "__ROUTER_MODEL_SLOT__";
-  const templatePayload = JSON.stringify(body);
 
   let lastFailedModel = targetCascade[0];
   let lastFailedKeyId = "";
@@ -142,25 +127,30 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
   // Исполнение цикла
   for (let g = 0; g < groups.length; g++) {
     const currentGroup = groups[g];
-    const candidate = currentGroup[Math.floor(Math.random() * currentGroup.length)];
+
+    // Отбираем из группы только тех кандидатов, которые НЕ в кулдауне
+    const available = currentGroup.filter((c) => {
+      const pairKey = `${c.model}:${c.keyItem.id}`;
+      if (modelCooldowns[c.model] && modelCooldowns[c.model] > now) return false;
+      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > now) return false;
+      return true;
+    });
+
+    if (available.length === 0) {
+      continue;
+    }
+
+    const candidate = available[Math.floor(Math.random() * available.length)];
     const pairKey = `${candidate.model}:${candidate.keyItem.id}`;
-
-    // Проверка Circuit Breaker для модели (503 кулдаун)
-    if (modelCooldowns[candidate.model] && modelCooldowns[candidate.model] > now) {
-      continue;
-    }
-
-    // Проверка штрафного бокса для пары [модель + ключ] (429 кулдаун)
-    if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > now) {
-      continue;
-    }
 
     lastFailedModel = candidate.model;
     lastFailedKeyId = candidate.keyItem.id;
 
-    // Быстрая строковая подстановка модели без повторного парсинга base64 картинок
-    const payload = templatePayload.replace('"__ROUTER_MODEL_SLOT__"', JSON.stringify(candidate.model));
+    // Меняем модель только в первых 500 символах
+    const head = preparedPayload.slice(0, 500).replace(/"model"\s*:\s*"[^"]*"/i, `"model":"${candidate.model}"`);
+    const payload = head + preparedPayload.slice(500);
     const startTime = Date.now();
+    let isTimeout = false;
 
     try {
       const response = await fetch(DEFAULT_GOOGLE_ENDPOINT, {
@@ -187,9 +177,9 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
 
         if (statusCode === 503 || statusText === "UNAVAILABLE") {
           modelCooldowns[candidate.model] = Date.now() + COOLDOWN_503_MS;
-          log("warn", "Model 503 High Demand: entering 5m cooldown and skipping model", {
+          log("warn", "Model 503 High Demand: entering 3m cooldown and skipping model", {
             model: candidate.model,
-            cooldownMinutes: 5,
+            cooldownMinutes: 3,
             durationMs,
           }, env, ctx);
           continue;
@@ -244,6 +234,9 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
           status: response.status,
           durationMs,
         }, env, ctx);
+        if (g === groups.length - 1) {
+          lastErrorDetails = errorObj.message || statusText || `HTTP ${statusCode}`;
+        }
         continue;
       }
 
@@ -299,14 +292,20 @@ export async function executeStratifiedRouting(request, body, currentUser, casca
     lastFailedKey: lastFailedKeyId,
   }, env, ctx);
 
+  const humanMessage = `Gemini Edge Gateway: исчерпаны все ${groups.length} попыток. Последний отказ: ${lastFailedModel} (${lastFailedKeyId}).`;
+
   return new Response(
     JSON.stringify({
-      error: "Gemini Edge Gateway exhausted across all strata and keys",
-      last_failed_model: lastFailedModel,
-      last_failed_key: lastFailedKeyId,
-      attempts_made: groups.length,
-      details: lastErrorDetails,
+      error: {
+        message: humanMessage,
+        type: "insufficient_quota",
+        code: "gateway_exhausted",
+        last_failed_model: lastFailedModel,
+        last_failed_key: lastFailedKeyId,
+        attempts_made: groups.length,
+        details: lastErrorDetails,
+      },
     }),
-    { status: 429, headers: { "Content-Type": "application/json" } }
+    { status: 429, headers: { "Content-Type": "application/json; charset=utf-8" } }
   );
 }

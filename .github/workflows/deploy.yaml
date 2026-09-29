@@ -21,6 +21,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Inject KV binding from Secret
+        env:
+          GATEWAY_KV_ID: ${{ secrets.GATEWAY_KV_ID }}
+        run: |
+          if [ -n "$GATEWAY_KV_ID" ]; then
+            node -e '
+              const fs = require("fs");
+              const config = JSON.parse(fs.readFileSync("wrangler.jsonc", "utf8"));
+              config.kv_namespaces = [{ binding: "GATEWAY_KV", id: process.env.GATEWAY_KV_ID }];
+              fs.writeFileSync("wrangler.jsonc", JSON.stringify(config, null, 2));
+            '
+          fi
+
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

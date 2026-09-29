@@ -9,8 +9,18 @@ export default {
     const url = new URL(request.url);
     const { keys, authorizedUsers } = parseConfig(env);
 
-    // Публичный эндпоинт аналитики (без пароля)
+    // Публичный эндпоинт аналитики с поддержкой CORS
     if (url.pathname === "/api/stats") {
+      const corsHeaders = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      };
+
+      if (request.method === "OPTIONS") {
+        return new Response(null, { headers: corsHeaders });
+      }
+
       try {
         const discovery = await getDiscoveryData(keys);
         const stats = await getAnalyticsSnapshot(discovery, keys, env);
@@ -18,12 +28,13 @@ export default {
           headers: {
             "Content-Type": "application/json",
             "Cache-Control": "no-cache",
+            ...corsHeaders,
           },
         });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), {
           status: 500,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
     }
@@ -59,16 +70,17 @@ export default {
         });
       }
 
-      let body;
+      // Читаем тело как сырой текст без блокирующего JSON.parse (экономим CPU на больших чатах)
+      let rawBody;
       try {
-        body = await request.json();
+        rawBody = await request.text();
       } catch {
-        return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400 });
+        return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400 });
       }
 
       try {
         const discovery = await getDiscoveryData(keys);
-        return await executeStratifiedRouting(request, body, authResult.user, discovery, discovery.activeKeys, env, ctx);
+        return await executeStratifiedRouting(request, rawBody, authResult.user, discovery, discovery.activeKeys, env, ctx);
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
