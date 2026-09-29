@@ -47,8 +47,13 @@ function renderOverview(data) {
     document.getElementById("last-resp").textContent = "NO TRAFFIC YET";
   }
 
-  document.getElementById("last-disc").textContent =
-    data.discovery?.lastUpdated || "NOT INITIALIZED";
+  const lastDisc = data.discovery?.lastUpdated;
+  if (lastDisc) {
+    const d = new Date(lastDisc);
+    document.getElementById("last-disc").textContent = isNaN(d.getTime()) ? lastDisc : d.toLocaleString();
+  } else {
+    document.getElementById("last-disc").textContent = "NOT INITIALIZED";
+  }
 }
 
 function renderKeys(keys) {
