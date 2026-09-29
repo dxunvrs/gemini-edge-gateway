@@ -56,6 +56,12 @@ export function createGeminiStreamPipeline() {
 
       for (let line of lines) {
         if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
+          // Если мысли уже отфильтрованы и нет тулов — отдаем строку как есть
+          if (initialThoughtFinished && !line.includes('"tool_calls"') && !line.includes('"finish_reason"')) {
+            controller.enqueue(encoder.encode(line + "\n"));
+            continue;
+          }
+
           try {
             const json = JSON.parse(line.slice(6));
             const choice = json.choices?.[0];
