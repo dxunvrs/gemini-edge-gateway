@@ -8,7 +8,6 @@
   "assets": {
     "directory": "./public"
   },
-  // Smart Placement запускает воркер ближе к дата-центрам Google API
   "placement": {
     "mode": "smart"
   }
