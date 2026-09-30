@@ -1,12 +1,16 @@
 const MAX_LOGS = 1000;
 let memoryLogs = [];
 
-export function log(level, message, meta = {}, env = null, ctx = null) {
+// Функция фиксации успешного запроса (пишет в KV ровно 1 раз при успехе)
+export function logSuccess(model, keyId, durationMs, env = null, ctx = null) {
   const entry = {
     timestamp: new Date().toISOString(),
-    level, // "info" | "warn" | "error" | "success"
-    message,
-    ...meta,
+    level: "success",
+    message: "Success",
+    model,
+    key: keyId,
+    status: 200,
+    durationMs,
   };
 
   memoryLogs.unshift(entry);
@@ -14,16 +18,7 @@ export function log(level, message, meta = {}, env = null, ctx = null) {
     memoryLogs.pop();
   }
 
-  const metaStr = Object.keys(meta).length > 0 ? ` | ${JSON.stringify(meta)}` : "";
-  const consoleLine = `[${entry.timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
-
-  if (level === "error") {
-    console.error(consoleLine);
-  } else if (level === "warn") {
-    console.warn(consoleLine);
-  } else {
-    console.log(consoleLine);
-  }
+  console.log(`[${entry.timestamp}] [SUCCESS] ${model} (${keyId}) in ${durationMs}ms`);
 
   if (env?.GATEWAY_KV && ctx?.waitUntil) {
     ctx.waitUntil(
@@ -38,7 +33,7 @@ export async function getPersistentLogs(env) {
       const stored = await env.GATEWAY_KV.get("gateway_logs", "json");
       if (Array.isArray(stored) && stored.length > 0) {
         const merged = [...memoryLogs, ...stored];
-        const unique = Array.from(new Map(merged.map(item => [item.timestamp + item.message, item])).values());
+        const unique = Array.from(new Map(merged.map((item) => [item.timestamp + item.key, item])).values());
         memoryLogs = unique.slice(0, MAX_LOGS);
         return memoryLogs;
       }
