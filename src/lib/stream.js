@@ -15,25 +15,29 @@ export function createGeminiStreamPipeline() {
     contentBuffer = "";
 
     if (inThought) {
-      const closeMatch = str.match(/<\/(thought|thinking)>/i);
+      const closeMatch = str.match(/<\/(thought|thinking|think)>/i);
       if (closeMatch) {
         inThought = false;
         initialThoughtFinished = true;
         return str.slice(closeMatch.index + closeMatch[0].length);
       }
-      if (str.endsWith("<") || str.endsWith("</") || str.endsWith("</t") || str.endsWith("</th")) {
-        contentBuffer = str.slice(str.lastIndexOf("<"));
+
+      // Если в конце строки оборванный тег закрытия мыслей — буферизуем
+      const lastLt = str.lastIndexOf("<");
+      if (lastLt !== -1 && !str.slice(lastLt).includes(">")) {
+        contentBuffer = str.slice(lastLt);
+        return "";
       }
       return "";
     }
 
-    const openMatch = str.match(/<(thought|thinking)>/i);
+    const openMatch = str.match(/<(thought|thinking|think)>/i);
     if (openMatch) {
       inThought = true;
       const preText = str.slice(0, openMatch.index);
       const rest = str.slice(openMatch.index + openMatch[0].length);
 
-      const immediateClose = rest.match(/<\/(thought|thinking)>/i);
+      const immediateClose = rest.match(/<\/(thought|thinking|think)>/i);
       if (immediateClose) {
         inThought = false;
         initialThoughtFinished = true;
@@ -57,7 +61,7 @@ export function createGeminiStreamPipeline() {
       for (let line of lines) {
         if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
           // Если мысли уже отфильтрованы и нет тулов — отдаем строку как есть
-          if (initialThoughtFinished && !line.includes('"tool_calls"') && !line.includes('"finish_reason"')) {
+          if (initialThoughtFinished && !hasToolCalls && !line.includes('"tool_calls"')) {
             controller.enqueue(encoder.encode(line + "\n"));
             continue;
           }

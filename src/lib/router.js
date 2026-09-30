@@ -1,6 +1,6 @@
 import { createGeminiStreamPipeline } from "./stream.js";
 import { recordSuccess } from "./analytics.js";
-import { logSuccess } from "./logger.js";
+import { logSuccess, logError } from "./logger.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
@@ -114,6 +114,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   let hadTpmError = false;
   let hadRpdError = false;
   let hadRpmError = false;
+  let hadAuthError = false;
+  let lastGoogleError = "";
 
   // Исполнение цикла
   for (let g = 0; g < groups.length; g++) {
@@ -160,9 +162,27 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
         const errorObj = errorData?.error || {};
         const statusCode = response.status;
         const statusText = errorObj.status || "";
+        if (errorObj.message) {
+          lastGoogleError = errorObj.message;
+        }
+
+        // 401 / 403: Невалидный или заблокированный ключ. Отключаем его для всех моделей на 24 часа
+        if (statusCode === 401 || statusCode === 403) {
+          hadAuthError = true;
+          for (const m of targetCascade) {
+            pairCooldowns[`${m}:${candidate.keyItem.id}`] = Date.now() + 24 * 60 * 60 * 1000;
+          }
+          continue;
+        }
 
         if (statusCode === 503 || statusText === "UNAVAILABLE") {
           modelCooldowns[candidate.model] = Date.now() + COOLDOWN_503_MS;
+          continue;
+        }
+
+        // 400: Проверка на превышение длины контекста (TPM / context limit)
+        if (statusCode === 400 && (errorObj.message?.toLowerCase().includes("token") || errorObj.message?.toLowerCase().includes("context"))) {
+          hadTpmError = true;
           continue;
         }
 
@@ -225,14 +245,26 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   }
 
   // Человекочитаемая подсказка при полном исчерпании попыток
-  let advice = "исчерпаны все попытки (${groups.length} групп).";
+  let advice = `исчерпаны все попытки (${groups.length} групп).`;
+  let errorReason = "Exhausted all attempts";
   if (hadTpmError) {
     advice = "контекст чата слишком велик (превышен минутный лимит токенов TPM). Выполните команду `/compact` в Zed или подождите 1 минуту.";
+    errorReason = "TPM Limit (Tokens/Minute)";
   } else if (hadRpdError) {
-    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах.";
+    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах. Сброс лимитов Google происходит в полночь по Тихоокеанскому времени (~10:00 / 11:00 по МСК).";
+    errorReason = "RPD Limit (Requests/Day)";
   } else if (hadRpmError) {
     advice = "слишком частые запросы (RPM). Подождите 30-60 секунд перед повтором.";
+    errorReason = "RPM Limit (Requests/Minute)";
+  } else if (hadAuthError) {
+    advice = "все предоставленные ключи GEMINI_KEY отклонены Google API (ошибка 401/403). Проверьте актуальность ключей в переменных Cloudflare.";
+    errorReason = "Auth Error (401/403 Invalid Key)";
+  } else if (lastGoogleError) {
+    advice = `ошибка Google API: ${lastGoogleError}`;
+    errorReason = `Google API Error: ${lastGoogleError}`;
   }
+
+  logError(errorReason, 429, env, ctx);
 
   return new Response(
     JSON.stringify({
