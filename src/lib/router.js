@@ -92,9 +92,10 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   const targetCascade = isLite ? cascades.lite : cascades.smart;
 
   // Безопасно заменяем content: null только для сообщений, не трогая декларации tools
-  let preparedPayload = rawText.includes('"content":null')
-    ? rawText.replaceAll('"content":null', '"content":""')
-    : rawText;
+  const preparedPayload = rawText.replaceAll(
+    /("role"\s*:\s*"assistant"\s*,\s*"content"\s*:\s*)null/gi,
+    '$1""'
+  );
 
   // Построение пар (Модель x Ключ)
   const allPairs = [];
@@ -109,17 +110,10 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   // Стратификация на 40 групп
   const groups = splitIntoGroups(allPairs, MAX_SUBREQUESTS);
 
-  log("info", "New chat completion request", {
-    user: currentUser,
-    targetCascade: isLite ? "lite" : "smart",
-    totalStrata: groups.length,
-    activeKeysCount: activeKeys.length,
-  }, env, ctx);
-
-  let lastFailedModel = targetCascade[0];
-  let lastFailedKeyId = "";
-  let lastErrorDetails = null;
   const now = Date.now();
+  let hadTpmError = false;
+  let hadRpdError = false;
+  let hadRpmError = false;
 
   // Исполнение цикла
   for (let g = 0; g < groups.length; g++) {
@@ -140,12 +134,9 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     const candidate = available[Math.floor(Math.random() * available.length)];
     const pairKey = `${candidate.model}:${candidate.keyItem.id}`;
 
-    lastFailedModel = candidate.model;
-    lastFailedKeyId = candidate.keyItem.id;
-
+    // Якорная замена модели: строго 1 раз в самом начале документа (^)
     const payload = preparedPayload.replace(/^(\s*\{\s*)"model"\s*:\s*"[^"]*"/i, `$1"model":"${candidate.model}"`);
     const startTime = Date.now();
-    let isTimeout = false;
 
     try {
       const response = await fetch(DEFAULT_GOOGLE_ENDPOINT, {
@@ -172,11 +163,6 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
         if (statusCode === 503 || statusText === "UNAVAILABLE") {
           modelCooldowns[candidate.model] = Date.now() + COOLDOWN_503_MS;
-          log("warn", "Model 503 High Demand: entering 3m cooldown and skipping model", {
-            model: candidate.model,
-            cooldownMinutes: 3,
-            durationMs,
-          }, env, ctx);
           continue;
         }
 
@@ -188,62 +174,34 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
           const quotaMetric = violation.quotaMetric || "";
 
           const isDailyLimit = quotaId.includes("PerDay") || quotaMetric.includes("per_day") || errorObj.message?.includes("limit: 20");
+          const isTokenLimit = quotaMetric.includes("token_count") || quotaId.includes("TokensPerMinute") || errorObj.message?.includes("tokens per minute");
+
+          if (isTokenLimit) hadTpmError = true;
+          if (isDailyLimit) hadRpdError = true;
+          if (!isDailyLimit && !isTokenLimit) hadRpmError = true;
 
           if (isDailyLimit) {
             const nowMs = Date.now();
             const lastUnblock = lastRpdUnblock[pairKey] || 0;
             let unlockTime = getNextMidnightPacificTime();
 
-            // Если прошло менее часа с момента выхода из предыдущего RPD (защита от рассинхрона серверов Google)
             if (lastUnblock > 0 && Math.abs(nowMs - lastUnblock) < ONE_HOUR_MS) {
               unlockTime = nowMs + ONE_HOUR_MS;
             }
 
             pairCooldowns[pairKey] = unlockTime;
             lastRpdUnblock[pairKey] = unlockTime;
-
-            log("warn", "Daily quota exhausted (RPD): blocked until reset", {
-              model: candidate.model,
-              key: candidate.keyItem.id,
-              unlocksAtLocal: new Date(unlockTime).toLocaleString(),
-              durationMs,
-            }, env, ctx);
           } else {
             const retryInfo = details.find((d) => d["@type"]?.includes("RetryInfo"));
             const delayMs = parseRetryDelayMs(retryInfo?.retryDelay, DEFAULT_RPM_DELAY_MS);
             pairCooldowns[pairKey] = Date.now() + delayMs;
-            log("warn", "Minute quota exceeded (RPM/TPM): temporary cooldown", {
-              model: candidate.model,
-              key: candidate.keyItem.id,
-              cooldownSeconds: Math.ceil(delayMs / 1000),
-              durationMs,
-            }, env, ctx);
           }
-          continue;
-        }
-
-        log("warn", "Stratum attempt failed", {
-          stratum: `${g + 1}/${groups.length}`,
-          model: candidate.model,
-          key: candidate.keyItem.id,
-          status: response.status,
-          durationMs,
-        }, env, ctx);
-        if (g === groups.length - 1) {
-          lastErrorDetails = errorObj.message || statusText || `HTTP ${statusCode}`;
         }
         continue;
       }
 
       // Успех: фиксируем в аналитике и отдаем поток
-      log("success", "Response streaming started", {
-        stratum: `${g + 1}/${groups.length}`,
-        model: candidate.model,
-        key: candidate.keyItem.id,
-        status: 200,
-        durationMs,
-      }, env, ctx);
-
+      logSuccess(candidate.model, candidate.keyItem.id, durationMs, env, ctx);
       recordSuccess(candidate.model, candidate.keyItem.id, currentUser, env, ctx);
 
       const streamPipeline = createGeminiStreamPipeline();
@@ -258,47 +216,30 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
         headers,
       });
     } catch (err) {
-      const durationMs = Date.now() - startTime;
-      const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
-
+      const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
       if (isTimeout) {
         modelCooldowns[candidate.model] = Date.now() + COOLDOWN_503_MS;
-      }
-
-      log("warn", "Network or fetch error during attempt", {
-        stratum: `${g + 1}/${groups.length}`,
-        model: candidate.model,
-        key: candidate.keyItem.id,
-        status: isTimeout ? "TIMEOUT" : "ERR",
-        durationMs,
-        error: err.message,
-      }, env, ctx);
-
-      if (g === groups.length - 1) {
-        lastErrorDetails = isTimeout ? "Google API timed out after 30s" : err.message;
       }
       continue;
     }
   }
 
-  log("error", "All strata exhausted", {
-    attemptsMade: groups.length,
-    lastFailedModel,
-    lastFailedKey: lastFailedKeyId,
-  }, env, ctx);
-
-  const humanMessage = `Gemini Edge Gateway: исчерпаны все ${groups.length} попыток. Последний отказ: ${lastFailedModel} (${lastFailedKeyId}).`;
+  // Человекочитаемая подсказка при полном исчерпании попыток
+  let advice = "исчерпаны все попытки (${groups.length} групп).";
+  if (hadTpmError) {
+    advice = "контекст чата слишком велик (превышен минутный лимит токенов TPM). Выполните команду `/compact` в Zed или подождите 1 минуту.";
+  } else if (hadRpdError) {
+    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах.";
+  } else if (hadRpmError) {
+    advice = "слишком частые запросы (RPM). Подождите 30-60 секунд перед повтором.";
+  }
 
   return new Response(
     JSON.stringify({
       error: {
-        message: humanMessage,
+        message: `Gemini Edge Gateway: ${advice}`,
         type: "insufficient_quota",
         code: "gateway_exhausted",
-        last_failed_model: lastFailedModel,
-        last_failed_key: lastFailedKeyId,
-        attempts_made: groups.length,
-        details: lastErrorDetails,
       },
     }),
     { status: 429, headers: { "Content-Type": "application/json; charset=utf-8" } }
