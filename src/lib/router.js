@@ -98,92 +98,60 @@ function classifyGoogleError(statusCode, errorObj) {
   return { type: "OTHER", isDaily: false, isTpm: false, isRpm: false, is503: false };
 }
 
-// Быстрая нормализация структуры сообщений для Google API за 1 проход
-function sanitizePayloadForGoogle(rawText) {
-  // Нормализуем уровень мышления к стандартным значениям OpenAI (low, medium, high)
-  let normalizedText = rawText
-    .replace(/(?<!\\)"reasoning_effort"\s*:\s*"(minimal|none)"/gi, '"reasoning_effort":"low"')
-    .replace(/(?<!\\)"reasoning_effort"\s*:\s*"(max|extrahigh)"/gi, '"reasoning_effort":"high"');
+// Ультра-быстрая двухзонная нормализация (Two-Zone Split)
+function sanitizePayloadFast(rawText, targetModel) {
+  // Находим начало первого сообщения с картинкой (перед "role":"tool" или "image_url")
+  const firstImageIndex = rawText.indexOf('"image_url"');
+  let cutoff = rawText.length;
 
-  // если нет тулов, картинок и null — отдаем текст сразу (0.01 мс)
-  if (!normalizedText.includes('"tool_calls"') && !normalizedText.includes('"image_url"') && !normalizedText.includes('null')) {
-    return normalizedText;
+  if (firstImageIndex !== -1) {
+    // Находим начало фигурной скобки сообщения, содержащего картинку
+    const msgStart = rawText.lastIndexOf('{"role"', firstImageIndex);
+    cutoff = msgStart !== -1 ? msgStart : firstImageIndex;
   }
 
-  // если есть тулы/картинки/null — делаем глубокую структурную нормализацию
-  let bodyObj;
-  try {
-    bodyObj = JSON.parse(normalizedText);
-  } catch {
-    return normalizedText;
-  }
+  // Зона метаданных: все сообщения ДО тяжелых картинок
+  let metaZone = rawText.slice(0, cutoff);
+  let dataZone = rawText.slice(cutoff);
 
-  if (!Array.isArray(bodyObj?.messages)) return normalizedText;
+  metaZone = metaZone.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${targetModel}"`);
 
-  const newMessages = [];
+  metaZone = metaZone
+    .replaceAll('"content":null', '"content":""')
+    .replaceAll('"content": null', '"content":""');
 
-  for (const msg of bodyObj.messages) {
-    // Нормализация ассистента
-    if (msg.role === "assistant") {
-      if (msg.content === null || msg.content === undefined) {
-        msg.content = "";
-      }
-      if (Array.isArray(msg.tool_calls)) {
-        for (const tc of msg.tool_calls) {
-          if (!tc.extra_content) {
-            tc.extra_content = { google: { thought_signature: "skip_thought_signature_validator" } };
-          }
-        }
-      }
-      newMessages.push(msg);
-      continue;
+  metaZone = metaZone.replace(
+    /"tool_calls"\s*:\s*\[([\s\S]*?)\](?=\s*[,}])/g,
+    (match) => {
+      if (match.includes('thought_signature')) return match;
+      return match.replace(
+        /(?<!\\)("type"\s*:\s*"function")/g,
+        '$1,"extra_content":{"google":{"thought_signature":"skip_thought_signature_validator"}}'
+      );
     }
+  );
 
-    // Разделение картинок и текстового статуса тула за 1 проход
-    if (msg.role === "tool") {
-      if (Array.isArray(msg.content)) {
-        const imageParts = [];
-        const textParts = [];
+  const effortRegexMax = /(?<!\\)"reasoning_effort"\s*:\s*"(max|maximum|extrahigh)"/gi;
+  const effortRegexMin = /(?<!\\)"reasoning_effort"\s*:\s*"(min|minimum|none)"/gi;
+  metaZone = metaZone.replace(effortRegexMax, '"reasoning_effort":"high"').replace(effortRegexMin, '"reasoning_effort":"low"');
 
-        for (const part of msg.content) {
-          if (part.type === "image_url") imageParts.push(part);
-          else if (part.type === "text") textParts.push(part.text);
-        }
+  // В зоне картинок меняем "role":"tool" на "role":"user" (чтобы Google не выдавал 400 Invalid content part type)
+  if (dataZone.length > 0) {
+    dataZone = dataZone.replace(/(?<!\\)"role"\s*:\s*"tool"/g, '"role":"user"');
 
-        if (imageParts.length > 0) {
-          newMessages.push({
-            role: "tool",
-            tool_call_id: msg.tool_call_id,
-            content: textParts.join("\n") || "Image content loaded successfully.",
-          });
-
-          newMessages.push({
-            role: "user",
-            content: [
-              { type: "text", text: "Visual content from tool:" },
-              ...imageParts,
-            ],
-          });
-          continue;
-        }
-      } else if (msg.content === null || msg.content === undefined) {
-        msg.content = "";
-      }
-      newMessages.push(msg);
-      continue;
-    }
-
-    newMessages.push(msg);
+    // Если в самом конце лежал reasoning_effort
+    const tailLimit = Math.max(0, dataZone.length - 1000);
+    let tail = dataZone.slice(tailLimit)
+      .replace(effortRegexMax, '"reasoning_effort":"high"')
+      .replace(effortRegexMin, '"reasoning_effort":"low"');
+    dataZone = dataZone.slice(0, tailLimit) + tail;
   }
 
-  bodyObj.messages = newMessages;
-  return JSON.stringify(bodyObj);
+  return metaZone + dataZone;
 }
 
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
-  // Нормализуем тело один раз перед каскадом
-  const cleanPayload = sanitizePayloadForGoogle(rawText);
-  const headSnippet = cleanPayload.slice(0, 500);
+  const headSnippet = rawText.slice(0, 500);
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
   const targetCascade = isLite ? cascades.lite : cascades.smart;
 
@@ -203,8 +171,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
       continue;
     }
 
-    // Заменяем первое вхождение неэкранированного ключа "model" в корне JSON
-    const payload = cleanPayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
+    const payload = sanitizePayloadFast(rawText, model);
 
     for (const keyItem of activeKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
