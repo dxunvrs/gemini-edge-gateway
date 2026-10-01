@@ -60,23 +60,6 @@ function parseRetryDelayMs(retryDelayStr, defaultMs = DEFAULT_RPM_DELAY_MS) {
   return defaultMs;
 }
 
-function splitIntoGroups(array, maxGroups) {
-  const numGroups = Math.min(array.length, maxGroups);
-  if (numGroups === 0) return [];
-
-  const baseSize = Math.floor(array.length / numGroups);
-  const remainder = array.length % numGroups;
-  const groups = [];
-  let startIndex = 0;
-
-  for (let i = 0; i < numGroups; i++) {
-    const size = i < remainder ? baseSize + 1 : baseSize;
-    groups.push(array.slice(startIndex, startIndex + size));
-    startIndex += size;
-  }
-  return groups;
-}
-
 function normalizeReasoningEffort(effort) {
   if (!effort) return "medium";
   const e = String(effort).toLowerCase().replace(/[\s_-]+/g, "");
@@ -129,7 +112,15 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   const targetCascade = isLite ? cascades.lite : cascades.smart;
 
   // Заменяем неэкранированный JSON-ключ "content": null на "content": "" (исправляет 400 ошибку Google)
-  const preparedPayload = rawText.replace(/(?<!\\)"content"\s*:\s*null/g, '"content":""');
+  let preparedPayload = rawText.replace(/(?<!\\)"content"\s*:\s*null/g, '"content":""');
+
+  // Исправляем 400 ошибку Google при Thinking: внедряем официальный bypass-маркер thought_signature
+  if (preparedPayload.includes('"tool_calls"') && !preparedPayload.includes('thought_signature')) {
+    preparedPayload = preparedPayload.replace(
+      /(?<!\\)("id"\s*:\s*"[^"]*"\s*,\s*"type"\s*:\s*"function")/g,
+      '$1,"extra_content":{"google":{"thought_signature":"skip_thought_signature_validator"}}'
+    );
+  }
 
   const now = Date.now();
   let hadTpmError = false;
