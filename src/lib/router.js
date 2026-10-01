@@ -60,14 +60,6 @@ function parseRetryDelayMs(retryDelayStr, defaultMs = DEFAULT_RPM_DELAY_MS) {
   return defaultMs;
 }
 
-function normalizeReasoningEffort(effort) {
-  if (!effort) return "medium";
-  const e = String(effort).toLowerCase().replace(/[\s_-]+/g, "");
-  if (e === "max" || e === "extrahigh" || e === "high") return "high";
-  if (e === "low" || e === "minimal") return "low";
-  return "medium";
-}
-
 // Анализ типа ошибки Google AI API
 function classifyGoogleError(statusCode, errorObj) {
   const message = (errorObj?.message || "").toLowerCase();
@@ -105,31 +97,94 @@ function classifyGoogleError(statusCode, errorObj) {
   return { type: "OTHER", isDaily: false, isTpm: false, isRpm: false, is503: false };
 }
 
+// Быстрая нормализация структуры сообщений для Google API за 1 проход
+function sanitizePayloadForGoogle(rawText) {
+  // Нормализуем уровень мышления к стандартным значениям OpenAI (low, medium, high)
+  let normalizedText = rawText
+    .replace(/(?<!\\)"reasoning_effort"\s*:\s*"(minimal|none)"/gi, '"reasoning_effort":"low"')
+    .replace(/(?<!\\)"reasoning_effort"\s*:\s*"(max|extrahigh)"/gi, '"reasoning_effort":"high"');
+
+  // если нет тулов, картинок и null — отдаем текст сразу (0.01 мс)
+  if (!normalizedText.includes('"tool_calls"') && !normalizedText.includes('"image_url"') && !normalizedText.includes('null')) {
+    return normalizedText;
+  }
+
+  // если есть тулы/картинки/null — делаем глубокую структурную нормализацию
+  let bodyObj;
+  try {
+    bodyObj = JSON.parse(normalizedText);
+  } catch {
+    return normalizedText;
+  }
+
+  if (!Array.isArray(bodyObj?.messages)) return normalizedText;
+
+  const newMessages = [];
+
+  for (const msg of bodyObj.messages) {
+    // Нормализация ассистента
+    if (msg.role === "assistant") {
+      if (msg.content === null || msg.content === undefined) {
+        msg.content = "";
+      }
+      if (Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          if (!tc.extra_content) {
+            tc.extra_content = { google: { thought_signature: "skip_thought_signature_validator" } };
+          }
+        }
+      }
+      newMessages.push(msg);
+      continue;
+    }
+
+    // Разделение картинок и текстового статуса тула за 1 проход
+    if (msg.role === "tool") {
+      if (Array.isArray(msg.content)) {
+        const imageParts = [];
+        const textParts = [];
+
+        for (const part of msg.content) {
+          if (part.type === "image_url") imageParts.push(part);
+          else if (part.type === "text") textParts.push(part.text);
+        }
+
+        if (imageParts.length > 0) {
+          newMessages.push({
+            role: "tool",
+            tool_call_id: msg.tool_call_id,
+            content: textParts.join("\n") || "Image content loaded successfully.",
+          });
+
+          newMessages.push({
+            role: "user",
+            content: [
+              { type: "text", text: "Visual content from tool:" },
+              ...imageParts,
+            ],
+          });
+          continue;
+        }
+      } else if (msg.content === null || msg.content === undefined) {
+        msg.content = "";
+      }
+      newMessages.push(msg);
+      continue;
+    }
+
+    newMessages.push(msg);
+  }
+
+  bodyObj.messages = newMessages;
+  return JSON.stringify(bodyObj);
+}
+
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
-  // Безопасно определяем модель по первым 500 символам
-  const headSnippet = rawText.slice(0, 500);
+  // Нормализуем тело один раз перед каскадом
+  const cleanPayload = sanitizePayloadForGoogle(rawText);
+  const headSnippet = cleanPayload.slice(0, 500);
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
   const targetCascade = isLite ? cascades.lite : cascades.smart;
-
-  // Заменяем неэкранированный JSON-ключ "content": null на "content": "" (исправляет 400 ошибку Google)
-  let preparedPayload = rawText.replace(/(?<!\\)"content"\s*:\s*null/g, '"content":""');
-
-  // Исправляем 400 ошибку Google при Thinking: внедряем официальный bypass-маркер thought_signature
-  if (preparedPayload.includes('"tool_calls"') && !preparedPayload.includes('thought_signature')) {
-    preparedPayload = preparedPayload.replace(
-      /(?<!\\)("id"\s*:\s*"[^"]*"\s*,\s*"type"\s*:\s*"function")/g,
-      '$1,"extra_content":{"google":{"thought_signature":"skip_thought_signature_validator"}}'
-    );
-  }
-
-  // Защита от бага Google: "Invalid content part type: image_url" в сообщениях тулов
-  // Если внутри `role: "tool"` передана картинка image_url, преобразуем тип в совместимый вид
-  if (preparedPayload.includes('"image_url"')) {
-    preparedPayload = preparedPayload.replace(
-      /"role"\s*:\s*"tool"(\s*,\s*"content"\s*:\s*\[\s*\{\s*"type"\s*:\s*)"image_url"/g,
-      '"role":"tool"$1"text"'
-    );
-  }
 
   const now = Date.now();
   let hadTpmError = false;
@@ -149,7 +204,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     }
 
     // Заменяем первое вхождение неэкранированного ключа "model" в корне JSON
-    const payload = preparedPayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
+    const payload = cleanPayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
 
     for (const keyItem of activeKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
