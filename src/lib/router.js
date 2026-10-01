@@ -246,13 +246,6 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
           // Классифицируем причину ошибки
           const errInfo = classifyGoogleError(statusCode, errorObj);
 
-          // 404: Модель не найдена в OpenAI API Google — выключаем ее на 24 часа
-          if (statusCode === 404) {
-            modelCooldowns[model] = Date.now() + 24 * 60 * 60 * 1000;
-            logWarn(model, keyItem.id, statusCode, `Model Not Found (404): ${errorMsg}`, errorData, env, ctx);
-            break;
-          }
-
           if (errInfo.type === "AUTH") {
             hadAuthError = true;
             // Блокируем невалидный ключ для всех моделей на 24 часа
@@ -262,15 +255,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             logWarn(model, keyItem.id, statusCode, `Auth Error: ${errorMsg}`, errorData, env, ctx);
             continue;
           }
-
-          if (errInfo.type === "UNAVAILABLE") {
-            // Временный кулдаун на модель целиком
-            modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
-            logWarn(model, keyItem.id, statusCode, `Model Overloaded (503): ${errorMsg}`, errorData, env, ctx);
-            break; // Переходим к следующей модели в каскаде
-          }
-
-          if (errInfo.type === "RPD") {
+          else if (errInfo.type === "RPD") {
             hadRpdError = true;
             const nowMs = Date.now();
             const lastUnblock = lastRpdUnblock[pairKey] || 0;
@@ -285,20 +270,31 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             logWarn(model, keyItem.id, statusCode, `RPD Daily Limit: ${errorMsg}`, errorData, env, ctx);
             continue;
           }
-
-          if (errInfo.type === "TPM") {
+          else if (errInfo.type === "TPM") {
             hadTpmError = true;
             logWarn(model, keyItem.id, statusCode, `TPM Token Limit: ${errorMsg}`, errorData, env, ctx);
             continue;
           }
-
-          if (errInfo.type === "RPM") {
+          else if (errInfo.type === "RPM") {
             hadRpmError = true;
             const retryInfo = (errorObj.details || []).find((d) => d["@type"]?.includes("RetryInfo"));
             const delayMs = parseRetryDelayMs(retryInfo?.retryDelay, DEFAULT_RPM_DELAY_MS);
             pairCooldowns[pairKey] = Date.now() + delayMs;
             logWarn(model, keyItem.id, statusCode, `RPM Minute Limit (${Math.round(delayMs / 1000)}s): ${errorMsg}`, errorData, env, ctx);
             continue;
+          }
+
+          // 404: Модель не найдена в OpenAI API Google — выключаем ее на 24 часа
+          if (statusCode === 404) {
+            modelCooldowns[model] = Date.now() + 24 * 60 * 60 * 1000;
+            logWarn(model, keyItem.id, statusCode, `Model Not Found (404): ${errorMsg}`, errorData, env, ctx);
+            break;
+          }
+          else if (errInfo.type === "UNAVAILABLE") {
+            // Временный кулдаун на модель целиком
+            modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
+            logWarn(model, keyItem.id, statusCode, `Model Overloaded (503): ${errorMsg}`, errorData, env, ctx);
+            break; // Переходим к следующей модели в каскаде
           }
 
           // Прочие ошибки
@@ -328,7 +324,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
           modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
         }
         logWarn(model, keyItem.id, 0, isTimeout ? "Timeout (30s)" : err.message, null, env, ctx);
-        continue;
+        break;
       }
     }
   }
