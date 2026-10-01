@@ -182,6 +182,13 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
           // Классифицируем причину ошибки
           const errInfo = classifyGoogleError(statusCode, errorObj);
 
+          // 404: Модель не найдена в OpenAI API Google — выключаем ее на 24 часа
+          if (statusCode === 404) {
+            modelCooldowns[model] = Date.now() + 24 * 60 * 60 * 1000;
+            logWarn(model, keyItem.id, statusCode, `Model Not Found (404): ${errorMsg}`, errorData, env, ctx);
+            break;
+          }
+
           if (errInfo.type === "AUTH") {
             hadAuthError = true;
             // Блокируем невалидный ключ для всех моделей на 24 часа
