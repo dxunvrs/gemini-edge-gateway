@@ -122,6 +122,15 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     );
   }
 
+  // Защита от бага Google: "Invalid content part type: image_url" в сообщениях тулов
+  // Если внутри `role: "tool"` передана картинка image_url, преобразуем тип в совместимый вид
+  if (preparedPayload.includes('"image_url"')) {
+    preparedPayload = preparedPayload.replace(
+      /"role"\s*:\s*"tool"(\s*,\s*"content"\s*:\s*\[\s*\{\s*"type"\s*:\s*)"image_url"/g,
+      '"role":"tool"$1"text"'
+    );
+  }
+
   const now = Date.now();
   let hadTpmError = false;
   let hadRpdError = false;
