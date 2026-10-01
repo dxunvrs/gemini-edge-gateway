@@ -1,6 +1,6 @@
 import { createGeminiStreamPipeline } from "./stream.js";
 import { recordSuccess } from "./analytics.js";
-import { logSuccess, logError } from "./logger.js";
+import { logSuccess, logWarn, logError } from "./logger.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
@@ -85,6 +85,43 @@ function normalizeReasoningEffort(effort) {
   return "medium";
 }
 
+// Анализ типа ошибки Google AI API
+function classifyGoogleError(statusCode, errorObj) {
+  const message = (errorObj?.message || "").toLowerCase();
+  const rawDetails = JSON.stringify(errorObj?.details || []).toLowerCase();
+  const allText = `${message} ${rawDetails}`;
+
+  // Авторизация (401 / 403)
+  if (statusCode === 401 || statusCode === 403 || allText.includes("api_key_invalid") || allText.includes("permission_denied")) {
+    return { type: "AUTH", isDaily: false, isTpm: false, isRpm: false, is503: false };
+  }
+
+  // Серверная перегрузка (503 / 500 / UNAVAILABLE)
+  if (statusCode === 503 || statusCode === 500 || errorObj?.status === "UNAVAILABLE" || allText.includes("overloaded")) {
+    return { type: "UNAVAILABLE", isDaily: false, isTpm: false, isRpm: false, is503: true };
+  }
+
+  // Превышение контекста / токенов (400 или 429 TPM)
+  const isTpm = allText.includes("tpm") || allText.includes("tokensperminute");
+  if (statusCode === 400 && isTpm) {
+    return { type: "TPM", isDaily: false, isTpm: true, isRpm: false, is503: false };
+  }
+
+  // Лимиты квот (429 / RESOURCE_EXHAUSTED)
+  if (statusCode === 429 || errorObj?.status === "RESOURCE_EXHAUSTED") {
+    const isDaily = allText.includes("perday") || allText.includes("per_day") || allText.includes("daily");
+    if (isDaily) {
+      return { type: "RPD", isDaily: true, isTpm: false, isRpm: false, is503: false };
+    }
+    if (isTpm) {
+      return { type: "TPM", isDaily: false, isTpm: true, isRpm: false, is503: false };
+    }
+    return { type: "RPM", isDaily: false, isTpm: false, isRpm: true, is503: false };
+  }
+
+  return { type: "OTHER", isDaily: false, isTpm: false, isRpm: false, is503: false };
+}
+
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
   // Безопасно определяем модель по первым 500 символам
   const headSnippet = rawText.slice(0, 500);
@@ -97,110 +134,87 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     '$1""'
   );
 
-  // Построение пар (Модель x Ключ)
-  const allPairs = [];
-  for (const model of targetCascade) {
-    // Случайно перемешиваем ключи для каждой модели, чтобы распределять нагрузку
-    const shuffledKeys = [...activeKeys].sort(() => Math.random() - 0.5);
-    for (const keyItem of shuffledKeys) {
-      allPairs.push({ model, keyItem });
-    }
-  }
-
-  // Стратификация на 40 групп
-  const groups = splitIntoGroups(allPairs, MAX_SUBREQUESTS);
-
   const now = Date.now();
   let hadTpmError = false;
   let hadRpdError = false;
   let hadRpmError = false;
   let hadAuthError = false;
   let lastGoogleError = "";
+  let attemptsCount = 0;
 
-  // Исполнение цикла
-  for (let g = 0; g < groups.length; g++) {
-    const currentGroup = groups[g];
+  // Каскадный перебор: от лучших моделей к базовым
+  for (const model of targetCascade) {
+    if (attemptsCount >= MAX_SUBREQUESTS) break;
 
-    // Отбираем из группы только тех кандидатов, которые НЕ в кулдауне
-    const available = currentGroup.filter((c) => {
-      const pairKey = `${c.model}:${c.keyItem.id}`;
-      if (modelCooldowns[c.model] && modelCooldowns[c.model] > now) return false;
-      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > now) return false;
-      return true;
-    });
-
-    if (available.length === 0) {
+    // Если вся модель во временном кулдауне (например, после 503) — пропускаем
+    if (modelCooldowns[model] && modelCooldowns[model] > now) {
       continue;
     }
 
-    const candidate = available[Math.floor(Math.random() * available.length)];
-    const pairKey = `${candidate.model}:${candidate.keyItem.id}`;
+    // Случайно перемешиваем ключи для балансировки нагрузки внутри одной модели
+    const shuffledKeys = [...activeKeys].sort(() => Math.random() - 0.5);
 
-    // Якорная замена модели: строго 1 раз в самом начале документа (^)
-    const payload = preparedPayload.replace(/^(\s*\{\s*)"model"\s*:\s*"[^"]*"/i, `$1"model":"${candidate.model}"`);
-    const startTime = Date.now();
+    const payload = preparedPayload.replace(/^(\s*\{\s*)"model"\s*:\s*"[^"]*"/i, `$1"model":"${model}"`);
 
-    try {
-      const response = await fetch(DEFAULT_GOOGLE_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${candidate.keyItem.key}`,
-        },
-        body: payload,
-        signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
-      });
+    for (const keyItem of shuffledKeys) {
+      if (attemptsCount >= MAX_SUBREQUESTS) break;
 
-      const durationMs = Date.now() - startTime;
+      const pairKey = `${model}:${keyItem.id}`;
 
-      if (!response.ok) {
-        let errorData = null;
-        try {
-          errorData = await response.json();
-        } catch { }
+      // Проверяем кулдаун конкретной пары модель:ключ
+      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > now) {
+        continue;
+      }
 
-        const errorObj = errorData?.error || {};
-        const statusCode = response.status;
-        const statusText = errorObj.status || "";
-        if (errorObj.message) {
-          lastGoogleError = errorObj.message;
-        }
+      attemptsCount++;
+      const startTime = Date.now();
 
-        // 401 / 403: Невалидный или заблокированный ключ. Отключаем его для всех моделей на 24 часа
-        if (statusCode === 401 || statusCode === 403) {
-          hadAuthError = true;
-          for (const m of targetCascade) {
-            pairCooldowns[`${m}:${candidate.keyItem.id}`] = Date.now() + 24 * 60 * 60 * 1000;
+      try {
+        const response = await fetch(DEFAULT_GOOGLE_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${keyItem.key}`,
+          },
+          body: payload,
+          signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+        });
+
+        const durationMs = Date.now() - startTime;
+
+        if (!response.ok) {
+          let errorData = null;
+          try {
+            errorData = await response.json();
+          } catch { }
+
+          const errorObj = errorData?.error || {};
+          const statusCode = response.status;
+          const errorMsg = errorObj.message || `HTTP ${statusCode}`;
+          lastGoogleError = errorMsg;
+
+          // Классифицируем причину ошибки
+          const errInfo = classifyGoogleError(statusCode, errorObj);
+
+          if (errInfo.type === "AUTH") {
+            hadAuthError = true;
+            // Блокируем невалидный ключ для всех моделей на 24 часа
+            for (const m of targetCascade) {
+              pairCooldowns[`${m}:${keyItem.id}`] = Date.now() + 24 * 60 * 60 * 1000;
+            }
+            logWarn(model, keyItem.id, statusCode, `Auth Error: ${errorMsg}`, errorData, env, ctx);
+            continue;
           }
-          continue;
-        }
 
-        if (statusCode === 503 || statusText === "UNAVAILABLE") {
-          modelCooldowns[candidate.model] = Date.now() + COOLDOWN_503_MS;
-          continue;
-        }
+          if (errInfo.type === "UNAVAILABLE") {
+            // Временный кулдаун на модель целиком
+            modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
+            logWarn(model, keyItem.id, statusCode, `Model Overloaded (503): ${errorMsg}`, errorData, env, ctx);
+            break; // Переходим к следующей модели в каскаде
+          }
 
-        // 400: Проверка на превышение длины контекста (TPM / context limit)
-        if (statusCode === 400 && (errorObj.message?.toLowerCase().includes("token") || errorObj.message?.toLowerCase().includes("context"))) {
-          hadTpmError = true;
-          continue;
-        }
-
-        if (statusCode === 429 || statusText === "RESOURCE_EXHAUSTED") {
-          const details = errorObj.details || [];
-          const quotaFailure = details.find((d) => d["@type"]?.includes("QuotaFailure"));
-          const violation = quotaFailure?.violations?.[0] || {};
-          const quotaId = violation.quotaId || "";
-          const quotaMetric = violation.quotaMetric || "";
-
-          const isDailyLimit = quotaId.includes("PerDay") || quotaMetric.includes("per_day") || errorObj.message?.includes("limit: 20");
-          const isTokenLimit = quotaMetric.includes("token_count") || quotaId.includes("TokensPerMinute") || errorObj.message?.includes("tokens per minute");
-
-          if (isTokenLimit) hadTpmError = true;
-          if (isDailyLimit) hadRpdError = true;
-          if (!isDailyLimit && !isTokenLimit) hadRpmError = true;
-
-          if (isDailyLimit) {
+          if (errInfo.type === "RPD") {
+            hadRpdError = true;
             const nowMs = Date.now();
             const lastUnblock = lastRpdUnblock[pairKey] || 0;
             let unlockTime = getNextMidnightPacificTime();
@@ -211,47 +225,66 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
             pairCooldowns[pairKey] = unlockTime;
             lastRpdUnblock[pairKey] = unlockTime;
-          } else {
-            const retryInfo = details.find((d) => d["@type"]?.includes("RetryInfo"));
+            logWarn(model, keyItem.id, statusCode, `RPD Daily Limit: ${errorMsg}`, errorData, env, ctx);
+            continue;
+          }
+
+          if (errInfo.type === "TPM") {
+            hadTpmError = true;
+            logWarn(model, keyItem.id, statusCode, `TPM Token Limit: ${errorMsg}`, errorData, env, ctx);
+            continue;
+          }
+
+          if (errInfo.type === "RPM") {
+            hadRpmError = true;
+            const retryInfo = (errorObj.details || []).find((d) => d["@type"]?.includes("RetryInfo"));
             const delayMs = parseRetryDelayMs(retryInfo?.retryDelay, DEFAULT_RPM_DELAY_MS);
             pairCooldowns[pairKey] = Date.now() + delayMs;
+            logWarn(model, keyItem.id, statusCode, `RPM Minute Limit (${Math.round(delayMs / 1000)}s): ${errorMsg}`, errorData, env, ctx);
+            continue;
           }
+
+          // Прочие ошибки
+          logWarn(model, keyItem.id, statusCode, `API Error: ${errorMsg}`, errorData, env, ctx);
+          continue;
         }
+
+        // Успех (200 OK)
+        logSuccess(model, keyItem.id, durationMs, env, ctx);
+        recordSuccess(model, keyItem.id, currentUser, env, ctx);
+
+        const streamPipeline = createGeminiStreamPipeline();
+        response.body.pipeTo(streamPipeline.writable).catch(() => { });
+
+        const headers = new Headers(response.headers);
+        headers.delete("content-length");
+        headers.delete("content-encoding");
+
+        return new Response(streamPipeline.readable, {
+          status: response.status,
+          headers,
+        });
+
+      } catch (err) {
+        const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
+        if (isTimeout) {
+          modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
+        }
+        logWarn(model, keyItem.id, 0, isTimeout ? "Timeout (30s)" : err.message, null, env, ctx);
         continue;
       }
-
-      // Успех: фиксируем в аналитике и отдаем поток
-      logSuccess(candidate.model, candidate.keyItem.id, durationMs, env, ctx);
-      recordSuccess(candidate.model, candidate.keyItem.id, currentUser, env, ctx);
-
-      const streamPipeline = createGeminiStreamPipeline();
-      response.body.pipeTo(streamPipeline.writable).catch(() => { });
-
-      const headers = new Headers(response.headers);
-      headers.delete("content-length");
-      headers.delete("content-encoding");
-
-      return new Response(streamPipeline.readable, {
-        status: response.status,
-        headers,
-      });
-    } catch (err) {
-      const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
-      if (isTimeout) {
-        modelCooldowns[candidate.model] = Date.now() + COOLDOWN_503_MS;
-      }
-      continue;
     }
   }
 
   // Человекочитаемая подсказка при полном исчерпании попыток
-  let advice = `исчерпаны все попытки (${groups.length} групп).`;
+  let advice = `исчерпаны все попытки (${attemptsCount} запросов).`;
   let errorReason = "Exhausted all attempts";
+
   if (hadTpmError) {
     advice = "контекст чата слишком велик (превышен минутный лимит токенов TPM). Выполните команду `/compact` в Zed или подождите 1 минуту.";
     errorReason = "TPM Limit (Tokens/Minute)";
   } else if (hadRpdError) {
-    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах. Сброс лимитов Google происходит в полночь по Тихоокеанскому времени (~10:00 / 11:00 по МСК).";
+    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах для доступных моделей. Сброс лимитов Google происходит в полночь по Тихоокеанскому времени (~10:00 / 11:00 по МСК).";
     errorReason = "RPD Limit (Requests/Day)";
   } else if (hadRpmError) {
     advice = "слишком частые запросы (RPM). Подождите 30-60 секунд перед повтором.";
@@ -264,7 +297,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     errorReason = `Google API Error: ${lastGoogleError}`;
   }
 
-  logError(errorReason, 429, env, ctx);
+  logError(errorReason, 429, { lastGoogleError, attemptsCount }, env, ctx);
 
   return new Response(
     JSON.stringify({
