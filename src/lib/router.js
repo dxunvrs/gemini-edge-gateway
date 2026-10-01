@@ -151,12 +151,9 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
       continue;
     }
 
-    // Случайно перемешиваем ключи для балансировки нагрузки внутри одной модели
-    const shuffledKeys = [...activeKeys].sort(() => Math.random() - 0.5);
-
     const payload = preparedPayload.replace(/^(\s*\{\s*)"model"\s*:\s*"[^"]*"/i, `$1"model":"${model}"`);
 
-    for (const keyItem of shuffledKeys) {
+    for (const keyItem of activeKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
 
       const pairKey = `${model}:${keyItem.id}`;
