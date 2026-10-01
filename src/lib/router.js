@@ -128,11 +128,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
   const targetCascade = isLite ? cascades.lite : cascades.smart;
 
-  // Безопасно заменяем content: null только для сообщений, не трогая декларации tools
-  const preparedPayload = rawText.replaceAll(
-    /("role"\s*:\s*"assistant"\s*,\s*"content"\s*:\s*)null/gi,
-    '$1""'
-  );
+  // Заменяем неэкранированный JSON-ключ "content": null на "content": "" (исправляет 400 ошибку Google)
+  const preparedPayload = rawText.replace(/(?<!\\)"content"\s*:\s*null/g, '"content":""');
 
   const now = Date.now();
   let hadTpmError = false;
@@ -151,7 +148,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
       continue;
     }
 
-    const payload = preparedPayload.replace(/^(\s*\{\s*)"model"\s*:\s*"[^"]*"/i, `$1"model":"${model}"`);
+    // Заменяем первое вхождение неэкранированного ключа "model" в корне JSON
+    const payload = preparedPayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
 
     for (const keyItem of activeKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
