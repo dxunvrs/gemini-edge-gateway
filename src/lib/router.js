@@ -4,14 +4,15 @@ import { logSuccess, logWarn, logError } from "./logger.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
-const ATTEMPT_TIMEOUT_MS = 30000; // 30 секунд
 
 // Настройки кулдаунов и таймзон
 const COOLDOWN_503_MS = 3 * 60 * 1000; // 3 минуты при перегрузке модели
 const DEFAULT_RPM_DELAY_MS = 60 * 1000; // 60 секунд по умолчанию при минутном лимите
 const PACIFIC_TIMEZONE = "America/Los_Angeles";
 const MIDNIGHT_BUFFER_SEC = 5 * 60; // 5 минут запаса после полуночи PT
+const ATTEMPT_TIMEOUT_MS = 30000; // 30 секунд
 const ONE_HOUR_MS = 60 * 60 * 1000; // 1 час для защиты от рассинхрона
+const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 
 // Таблицы штрафного бокса в памяти
 const modelCooldowns = {};
@@ -186,7 +187,6 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
   const targetCascade = isLite ? cascades.lite : cascades.smart;
 
-  const now = Date.now();
   let hadTpmError = false;
   let hadRpdError = false;
   let hadRpmError = false;
@@ -199,7 +199,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     if (attemptsCount >= MAX_SUBREQUESTS) break;
 
     // Если вся модель во временном кулдауне (например, после 503) — пропускаем
-    if (modelCooldowns[model] && modelCooldowns[model] > now) {
+    if (modelCooldowns[model] && modelCooldowns[model] > Date.now()) {
       continue;
     }
 
@@ -212,7 +212,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
       const pairKey = `${model}:${keyItem.id}`;
 
       // Проверяем кулдаун конкретной пары модель:ключ
-      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > now) {
+      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > Date.now()) {
         continue;
       }
 
@@ -250,7 +250,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             hadAuthError = true;
             // Блокируем невалидный ключ для всех моделей на 24 часа
             for (const m of targetCascade) {
-              pairCooldowns[`${m}:${keyItem.id}`] = Date.now() + 24 * 60 * 60 * 1000;
+              pairCooldowns[`${m}:${keyItem.id}`] = Date.now() + DAY_HOURS_MS;
             }
             logWarn(model, keyItem.id, statusCode, `Auth Error: ${errorMsg}`, errorData, env, ctx);
             continue;
@@ -286,7 +286,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           // 404: Модель не найдена в OpenAI API Google — выключаем ее на 24 часа
           if (statusCode === 404) {
-            modelCooldowns[model] = Date.now() + 24 * 60 * 60 * 1000;
+            modelCooldowns[model] = Date.now() + DAY_HOURS_MS;
             logWarn(model, keyItem.id, statusCode, `Model Not Found (404): ${errorMsg}`, errorData, env, ctx);
             break;
           }
