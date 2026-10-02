@@ -14,6 +14,7 @@ const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 const modelCooldowns = {};
 const pairCooldowns = {};
 const deadKeys = new Set();
+const deadModels = new Set();
 
 const lastRpdUnblock = {};
 
@@ -138,6 +139,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   // Каскадный перебор: от лучших моделей к базовым
   for (const model of targetCascade) {
     if (attemptsCount >= MAX_SUBREQUESTS) break;
+    if (deadModels.has(model)) continue;
 
     if (modelCooldowns[model] && modelCooldowns[model] > Date.now()) {
       continue;
@@ -178,13 +180,13 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           const errInfo = classifyGoogleError(statusCode, errorObj);
           if (errInfo.type === "NOT_FOUND") {
-            modelCooldowns[model] = Date.now() + DAY_HOURS_MS;
+            deadModels.add(model);
             logWarn(model, keyItem.id, statusCode, `Model Deprecated/Not Found (404)`, errorData, durationMs, env, ctx);
             break;
           }
 
           if (errInfo.type === "ZERO_QUOTA") {
-            modelCooldowns[model] = Date.now() + DAY_HOURS_MS;
+            deadModels.add(model);
             logWarn(model, keyItem.id, statusCode, `Zero Free Quota (limit: 0)`, errorData, durationMs, env, ctx);
             break;
           }
