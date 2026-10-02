@@ -53,39 +53,65 @@ export default {
       );
     }
 
-    // Обработка промптов (/v1/chat/completions, уже по паролю)
+    // Обработка промптов (/v1/chat/completions)
     if (url.pathname.endsWith("/chat/completions")) {
       const authResult = authenticate(request, authorizedUsers);
       if (!authResult.ok) {
-        return new Response(JSON.stringify({ error: "Unauthorized: Invalid Access Token" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Unauthorized: Invalid Access Token",
+              type: "auth_error",
+              code: 401,
+            },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
       }
 
       if (keys.length === 0) {
-        return new Response(JSON.stringify({ error: "No GEMINI_KEY variables configured in Cloudflare" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "No GEMINI_KEY variables configured in Cloudflare",
+              type: "configuration_error",
+              code: 500,
+            },
+          }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
       }
 
-      // Читаем тело как сырой текст без блокирующего JSON.parse (экономим CPU на больших чатах)
       let rawBody;
       try {
         rawBody = await request.text();
       } catch {
-        return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400 });
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Invalid request body",
+              type: "invalid_request_error",
+              code: 400,
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
       }
 
       try {
         const discovery = await getDiscoveryData(keys);
         return await executeStratifiedRouting(request, rawBody, authResult.user, discovery, discovery.activeKeys, env, ctx);
       } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: `Gateway Error: ${err.message}`,
+              type: "internal_server_error",
+              code: 500,
+            },
+          }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
       }
     }
 
