@@ -13,6 +13,8 @@ const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 
 const modelCooldowns = {};
 const pairCooldowns = {};
+const deadKeys = new Set();
+
 const lastRpdUnblock = {};
 
 function getNextMidnightUtc() {
@@ -142,22 +144,16 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   for (const model of targetCascade) {
     if (attemptsCount >= MAX_SUBREQUESTS) break;
 
-    // Если вся модель во временном кулдауне (например, после 503) — пропускаем
     if (modelCooldowns[model] && modelCooldowns[model] > Date.now()) {
       continue;
     }
-
     const payload = sanitizePayloadFast(rawText, model);
-
     for (const keyItem of activeKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
+      if (deadKeys.has(keyItem.id)) continue;
 
       const pairKey = `${model}:${keyItem.id}`;
-
-      // Проверяем кулдаун конкретной пары модель:ключ
-      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > Date.now()) {
-        continue;
-      }
+      if (pairCooldowns[pairKey] && pairCooldowns[pairKey] > Date.now()) continue;
 
       attemptsCount++;
       const startTime = Date.now();
@@ -200,9 +196,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           if (errInfo.type === "AUTH") {
             hadAuthError = true;
-            for (const m of targetCascade) {
-              pairCooldowns[`${m}:${keyItem.id}`] = Date.now() + DAY_HOURS_MS;
-            }
+            deadKeys.add(keyItem.id);
             logWarn(model, keyItem.id, statusCode, `Auth Error (Invalid Key)`, errorData, durationMs, env, ctx);
             continue;
           }
