@@ -181,7 +181,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             errorData = await response.json();
           } catch { }
 
-          const errorObj = errorData?.error || {};
+          const rawError = Array.isArray(errorData) ? errorData[0] : errorData;
+          const errorObj = rawError?.error || rawError || {};
           const statusCode = response.status;
 
           const errInfo = classifyGoogleError(statusCode, errorObj);
