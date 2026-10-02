@@ -77,23 +77,18 @@ function classifyGoogleError(statusCode, errorObj) {
   return { type: "OTHER" };
 }
 
-// Ультра-быстрая двухзонная нормализация (Two-Zone Split)
-function sanitizePayloadFast(rawText, targetModel) {
-  // Находим начало первого сообщения с картинкой (перед "role":"tool" или "image_url")
+// Two-Zone Split
+function prepareSanitizedTemplate(rawText) {
   const firstImageIndex = rawText.indexOf('"image_url"');
   let cutoff = rawText.length;
 
   if (firstImageIndex !== -1) {
-    // Находим начало фигурной скобки сообщения, содержащего картинку
     const msgStart = rawText.lastIndexOf('{"role"', firstImageIndex);
     cutoff = msgStart !== -1 ? msgStart : firstImageIndex;
   }
 
-  // Зона метаданных: все сообщения ДО тяжелых картинок
   let metaZone = rawText.slice(0, cutoff);
   let dataZone = rawText.slice(cutoff);
-
-  metaZone = metaZone.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${targetModel}"`);
 
   metaZone = metaZone
     .replaceAll('"content":null', '"content":""')
@@ -114,13 +109,11 @@ function sanitizePayloadFast(rawText, targetModel) {
   const effortRegexMin = /(?<!\\)"reasoning_effort"\s*:\s*"(min|minimum|none)"/gi;
   metaZone = metaZone.replace(effortRegexMax, '"reasoning_effort":"high"').replace(effortRegexMin, '"reasoning_effort":"low"');
 
-  // В зоне картинок меняем "role":"tool" на "role":"user" (чтобы Google не выдавал 400 Invalid content part type)
   if (dataZone.length > 0) {
     dataZone = dataZone.replace(/(?<!\\)"role"\s*:\s*"tool"/g, '"role":"user"');
 
-    // Если в самом конце лежал reasoning_effort
     const tailLimit = Math.max(0, dataZone.length - 1000);
-    let tail = dataZone.slice(tailLimit)
+    const tail = dataZone.slice(tailLimit)
       .replace(effortRegexMax, '"reasoning_effort":"high"')
       .replace(effortRegexMin, '"reasoning_effort":"low"');
     dataZone = dataZone.slice(0, tailLimit) + tail;
@@ -140,6 +133,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   let hadAuthError = false;
   let attemptsCount = 0;
 
+  const basePayload = prepareSanitizedTemplate(rawText);
+
   // Каскадный перебор: от лучших моделей к базовым
   for (const model of targetCascade) {
     if (attemptsCount >= MAX_SUBREQUESTS) break;
@@ -147,7 +142,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     if (modelCooldowns[model] && modelCooldowns[model] > Date.now()) {
       continue;
     }
-    const payload = sanitizePayloadFast(rawText, model);
+    const payload = basePayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
     for (const keyItem of activeKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
       if (deadKeys.has(keyItem.id)) continue;
