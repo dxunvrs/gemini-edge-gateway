@@ -46,8 +46,8 @@ export function logSuccess(model, keyId, durationMs, env = null, ctx = null) {
   }
 }
 
-// Промежуточная неудачная попытка (429, 503, 401, timeout)
-export function logWarn(model, keyId, status, message, rawDetails = null, env = null, ctx = null) {
+// Промежуточная неудачная попытка (429, 503, 401, timeout, 404)
+export function logWarn(model, keyId, status, message, rawDetails = null, durationMs = null, env = null, ctx = null) {
   const entry = {
     timestamp: new Date().toISOString(),
     level: "warn",
@@ -56,10 +56,11 @@ export function logWarn(model, keyId, status, message, rawDetails = null, env = 
     key: keyId,
     status,
     details: rawDetails,
+    durationMs,
   };
 
   pushMemoryLog(entry);
-  console.warn(`[${entry.timestamp}] [WARN] ${model} (${keyId}) -> ${status} ${message}`);
+  console.warn(`[${entry.timestamp}] [WARN] ${model} (${keyId}) -> ${status} ${message} in ${durationMs != null ? durationMs + 'ms' : 'N/A'}`);
 
   if (env?.GATEWAY_KV && ctx?.waitUntil) {
     ctx.waitUntil(persistLogEntry(entry, env));

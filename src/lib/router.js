@@ -5,50 +5,22 @@ import { logSuccess, logWarn, logError } from "./logger.js";
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
 
-// Настройки кулдаунов и таймзон
-const COOLDOWN_503_MS = 3 * 60 * 1000; // 3 минуты при перегрузке модели
-const DEFAULT_RPM_DELAY_MS = 60 * 1000; // 60 секунд по умолчанию при минутном лимите
-const PACIFIC_TIMEZONE = "America/Los_Angeles";
-const MIDNIGHT_BUFFER_SEC = 5 * 60; // 5 минут запаса после полуночи PT
-const ATTEMPT_TIMEOUT_MS = 30000; // 30 секунд
+const COOLDOWN_503_MS = 60 * 1000;
+const DEFAULT_RPM_DELAY_MS = 60 * 1000;
+const ATTEMPT_TIMEOUT_MS = 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000; // 1 час для защиты от рассинхрона
 const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 
-// Таблицы штрафного бокса в памяти
 const modelCooldowns = {};
 const pairCooldowns = {};
-const lastRpdUnblock = {}; // Время последнего выхода пары из суточного бана
-let cachedNextMidnightPT = 0; // Кэш полуночи PT
+const lastRpdUnblock = {};
 
-// Вычисление точного времени следующей полуночи по Pacific Time (PT) с кэшированием
-function getNextMidnightPacificTime() {
-  const now = Date.now();
-  if (now < cachedNextMidnightPT) {
-    return cachedNextMidnightPT;
-  }
-
-  const nowDate = new Date(now);
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone: PACIFIC_TIMEZONE,
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-    hourCycle: "h23",
-  });
-
-  const parts = Object.fromEntries(dtf.formatToParts(nowDate).map((p) => [p.type, p.value]));
-  const currentHour = parseInt(parts.hour, 10);
-  const currentMinute = parseInt(parts.minute, 10);
-  const currentSecond = parseInt(parts.second, 10);
-
-  const secondsSinceMidnightPT = currentHour * 3600 + currentMinute * 60 + currentSecond;
-  const secondsUntilMidnightPT = 86400 - secondsSinceMidnightPT;
-
-  cachedNextMidnightPT = now + (secondsUntilMidnightPT + MIDNIGHT_BUFFER_SEC) * 1000;
-  return cachedNextMidnightPT;
+function getNextMidnightUtc() {
+  const d = new Date();
+  d.setUTCHours(24, 0, 0, 0);
+  return d.getTime();
 }
 
-// Парсинг retryDelay от Google (например, "51s" или "51.670273123s")
 function parseRetryDelayMs(retryDelayStr, defaultMs = DEFAULT_RPM_DELAY_MS) {
   if (!retryDelayStr) return defaultMs;
   const match = String(retryDelayStr).match(/([\d.]+)\s*s?/i);
@@ -61,41 +33,46 @@ function parseRetryDelayMs(retryDelayStr, defaultMs = DEFAULT_RPM_DELAY_MS) {
   return defaultMs;
 }
 
-// Анализ типа ошибки Google AI API
 function classifyGoogleError(statusCode, errorObj) {
+  if (statusCode === 404 || errorObj?.status === "NOT_FOUND") {
+    return { type: "NOT_FOUND" };
+  }
   const message = (errorObj?.message || "").toLowerCase();
-  const rawDetails = JSON.stringify(errorObj?.details || []).toLowerCase();
-  const allText = `${message} ${rawDetails}`;
 
-  // Авторизация (401 / 403)
-  if (statusCode === 401 || statusCode === 403 || allText.includes("api_key_invalid") || allText.includes("permission_denied")) {
-    return { type: "AUTH", isDaily: false, isTpm: false, isRpm: false, is503: false };
+  if (message.includes("valid API key")) {
+    return { type: "AUTH" };
   }
 
-  // Серверная перегрузка (503 / 500 / UNAVAILABLE)
-  if (statusCode === 503 || statusCode === 500 || errorObj?.status === "UNAVAILABLE" || allText.includes("overloaded")) {
-    return { type: "UNAVAILABLE", isDaily: false, isTpm: false, isRpm: false, is503: true };
+  if (message.includes("limit: 0")) {
+    return { type: "ZERO_QUOTA" };
   }
 
-  // Превышение контекста / токенов (400 или 429 TPM)
-  const isTpm = allText.includes("tpm") || allText.includes("tokensperminute");
-  if (statusCode === 400 && isTpm) {
-    return { type: "TPM", isDaily: false, isTpm: true, isRpm: false, is503: false };
+  if (statusCode === 503 || statusCode === 500 || errorObj?.status === "UNAVAILABLE") {
+    return { type: "UNAVAILABLE" };
   }
 
-  // Лимиты квот (429 / RESOURCE_EXHAUSTED)
+  const details = errorObj?.details || [];
+  const quotaFailures = details.filter((d) => d["@type"]?.includes("QuotaFailure"));
+  const violations = quotaFailures.flatMap((q) => q.violations || []);
+
+  const quotaIds = violations.map((v) => (v.quotaId || "").toLowerCase()).join(" ");
+  const quotaMetrics = violations.map((v) => (v.quotaMetric || "").toLowerCase()).join(" ");
+
   if (statusCode === 429 || errorObj?.status === "RESOURCE_EXHAUSTED") {
-    const isDaily = allText.includes("perday") || allText.includes("per_day") || allText.includes("daily");
-    if (isDaily) {
-      return { type: "RPD", isDaily: true, isTpm: false, isRpm: false, is503: false };
-    }
-    if (isTpm) {
-      return { type: "TPM", isDaily: false, isTpm: true, isRpm: false, is503: false };
-    }
-    return { type: "RPM", isDaily: false, isTpm: false, isRpm: true, is503: false };
+    // TPM (tokens per minute)
+    const isTpm = quotaIds.includes("tokenspermodelperminute") || quotaMetrics.includes("input_token_count");
+    if (isTpm) { return { type: "TPM" }; }
+
+    // RPD (requests per day)
+    const isDaily = quotaIds.includes("requestsperday");
+    if (isDaily) { return { type: "RPD" }; }
+
+    // RPM (requests per minute)
+    const isRpm = quotaIds.includes("requestsperminute");
+    if (isRpm) { return { type: "RPM" }; }
   }
 
-  return { type: "OTHER", isDaily: false, isTpm: false, isRpm: false, is503: false };
+  return { type: "OTHER" };
 }
 
 // Ультра-быстрая двухзонная нормализация (Two-Zone Split)
@@ -159,7 +136,6 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   let hadRpdError = false;
   let hadRpmError = false;
   let hadAuthError = false;
-  let lastGoogleError = "";
   let attemptsCount = 0;
 
   // Каскадный перебор: от лучших моделей к базовым
@@ -207,26 +183,40 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           const errorObj = errorData?.error || {};
           const statusCode = response.status;
-          const errorMsg = errorObj.message || `HTTP ${statusCode}`;
-          lastGoogleError = errorMsg;
 
-          // Классифицируем причину ошибки
           const errInfo = classifyGoogleError(statusCode, errorObj);
+          if (errInfo.type === "NOT_FOUND") {
+            modelCooldowns[model] = Date.now() + DAY_HOURS_MS;
+            logWarn(model, keyItem.id, statusCode, `Model Deprecated/Not Found (404)`, errorData, durationMs, env, ctx);
+            break;
+          }
+
+          if (errInfo.type === "ZERO_QUOTA") {
+            modelCooldowns[model] = Date.now() + DAY_HOURS_MS;
+            logWarn(model, keyItem.id, statusCode, `Zero Free Quota (limit: 0)`, errorData, durationMs, env, ctx);
+            break;
+          }
 
           if (errInfo.type === "AUTH") {
             hadAuthError = true;
-            // Блокируем невалидный ключ для всех моделей на 24 часа
             for (const m of targetCascade) {
               pairCooldowns[`${m}:${keyItem.id}`] = Date.now() + DAY_HOURS_MS;
             }
-            logWarn(model, keyItem.id, statusCode, `Auth Error: ${errorMsg}`, errorData, env, ctx);
+            logWarn(model, keyItem.id, statusCode, `Auth Error (Invalid Key)`, errorData, durationMs, env, ctx);
             continue;
           }
-          else if (errInfo.type === "RPD") {
+
+          if (errInfo.type === "UNAVAILABLE") {
+            modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
+            logWarn(model, keyItem.id, statusCode, `Model Overloaded (503)`, errorData, durationMs, env, ctx);
+            break;
+          }
+
+          if (errInfo.type === "RPD") {
             hadRpdError = true;
             const nowMs = Date.now();
             const lastUnblock = lastRpdUnblock[pairKey] || 0;
-            let unlockTime = getNextMidnightPacificTime();
+            let unlockTime = getNextMidnightUtc();
 
             if (lastUnblock > 0 && Math.abs(nowMs - lastUnblock) < ONE_HOUR_MS) {
               unlockTime = nowMs + ONE_HOUR_MS;
@@ -234,42 +224,29 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
             pairCooldowns[pairKey] = unlockTime;
             lastRpdUnblock[pairKey] = unlockTime;
-            logWarn(model, keyItem.id, statusCode, `RPD Daily Limit: ${errorMsg}`, errorData, env, ctx);
+            logWarn(model, keyItem.id, statusCode, `RPD Daily Limit`, errorData, durationMs, env, ctx);
             continue;
           }
-          else if (errInfo.type === "TPM") {
+
+          if (errInfo.type === "TPM") {
             hadTpmError = true;
-            logWarn(model, keyItem.id, statusCode, `TPM Token Limit: ${errorMsg}`, errorData, env, ctx);
+            logWarn(model, keyItem.id, statusCode, `TPM Token Limit`, errorData, durationMs, env, ctx);
             continue;
           }
-          else if (errInfo.type === "RPM") {
+
+          if (errInfo.type === "RPM") {
             hadRpmError = true;
-            const retryInfo = (errorObj.details || []).find((d) => d["@type"]?.includes("RetryInfo"));
+            const retryInfo = (errorObj?.details || []).find((d) => d["@type"]?.includes("RetryInfo"));
             const delayMs = parseRetryDelayMs(retryInfo?.retryDelay, DEFAULT_RPM_DELAY_MS);
             pairCooldowns[pairKey] = Date.now() + delayMs;
-            logWarn(model, keyItem.id, statusCode, `RPM Minute Limit (${Math.round(delayMs / 1000)}s): ${errorMsg}`, errorData, env, ctx);
+            logWarn(model, keyItem.id, statusCode, `RPM Minute Limit (${Math.round(delayMs / 1000)}s)`, errorData, durationMs, env, ctx);
             continue;
           }
 
-          // 404: Модель не найдена в OpenAI API Google — выключаем ее на 24 часа
-          if (statusCode === 404) {
-            modelCooldowns[model] = Date.now() + DAY_HOURS_MS;
-            logWarn(model, keyItem.id, statusCode, `Model Not Found (404): ${errorMsg}`, errorData, env, ctx);
-            break;
-          }
-          else if (errInfo.type === "UNAVAILABLE") {
-            // Временный кулдаун на модель целиком
-            modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
-            logWarn(model, keyItem.id, statusCode, `Model Overloaded (503): ${errorMsg}`, errorData, env, ctx);
-            break; // Переходим к следующей модели в каскаде
-          }
-
-          // Прочие ошибки
-          logWarn(model, keyItem.id, statusCode, `API Error: ${errorMsg}`, errorData, env, ctx);
+          logWarn(model, keyItem.id, statusCode, `API Error`, errorData, durationMs, env, ctx);
           continue;
         }
 
-        // Успех (200 OK)
         logSuccess(model, keyItem.id, durationMs, env, ctx);
         recordSuccess(model, keyItem.id, currentUser, env, ctx);
 
@@ -290,13 +267,13 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
         if (isTimeout) {
           modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
         }
-        logWarn(model, keyItem.id, 0, isTimeout ? "Timeout (30s)" : err.message, null, env, ctx);
+        const durationMs = Date.now() - startTime;
+        logWarn(model, keyItem.id, 0, isTimeout ? `Timeout (${ATTEMPT_TIMEOUT_MS / 1000}s)` : err.message, null, durationMs, env, ctx);
         break;
       }
     }
   }
 
-  // Человекочитаемая подсказка при полном исчерпании попыток
   let advice = `исчерпаны все попытки (${attemptsCount} запросов).`;
   let errorReason = "Exhausted all attempts";
 
@@ -304,7 +281,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     advice = "контекст чата слишком велик (превышен минутный лимит токенов TPM). Выполните команду `/compact` в Zed или подождите 1 минуту.";
     errorReason = "TPM Limit (Tokens/Minute)";
   } else if (hadRpdError) {
-    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах для доступных моделей. Сброс лимитов Google происходит в полночь по Тихоокеанскому времени (~10:00 / 11:00 по МСК).";
+    advice = "исчерпан суточный лимит запросов (RPD) на всех ключах для доступных моделей.";
     errorReason = "RPD Limit (Requests/Day)";
   } else if (hadRpmError) {
     advice = "слишком частые запросы (RPM). Подождите 30-60 секунд перед повтором.";
@@ -312,12 +289,12 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
   } else if (hadAuthError) {
     advice = "все предоставленные ключи GEMINI_KEY отклонены Google API (ошибка 401/403). Проверьте актуальность ключей в переменных Cloudflare.";
     errorReason = "Auth Error (401/403 Invalid Key)";
-  } else if (lastGoogleError) {
-    advice = `ошибка Google API: ${lastGoogleError}`;
-    errorReason = `Google API Error: ${lastGoogleError}`;
+  } else {
+    advice = `Неизвестная ошибка`;
+    errorReason = `UNDEFINED`;
   }
 
-  logError(errorReason, 429, { lastGoogleError, attemptsCount }, env, ctx);
+  logError(errorReason, 429, attemptsCount, env, ctx);
 
   return new Response(
     JSON.stringify({
