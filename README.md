@@ -72,12 +72,13 @@ flowchart TD
 
 ## Содержание документации
 
-- [Инструкция по развертыванию и настройке (Setup Guide)](docs/setup_guide.md) -- пошаговый процесс от создания D1 до получения ключей в Google
-- [Архитектура и логика работы (Architecture)](docs/architecture.md) -- подробные диаграммы Mermaid, алгоритм Two-Zone Split и обработка ошибок
-- [Техническое описание (Technical Details)](docs/technical.md) -- разбор лимитов subrequests, времени сброса 00:00 UTC и Protobuf-особенностей Google
-- [Каталог ответов Google AI API (Google API Responses)](docs/google_api_responses.md) -- эталонные дампы JSON всех типов ошибок Google
-- [Спецификация запросов Zed (Zed Payload Spec)](docs/zed_payload_spec.md) -- структура полезной нагрузки агента, инструментов и системных промптов
-- [Интеграция вне Zed (Integrations)](docs/integrations.md) -- подключение шлюза через cURL, Python, Cursor и консольные утилиты
+- [Инструкция по развертыванию и настройке](docs/setup_guide.md) -- пошаговый процесс от создания D1 до получения ключей в Google
+- [Архитектура и логика работы](docs/architecture.md) -- подробные диаграммы Mermaid, алгоритм Two-Zone Split и обработка ошибок
+- [Технические детали](docs/technical.md) -- разбор лимитов subrequests, времени сброса 00:00 UTC и Protobuf-особенностей Google
+- [Каталог ответов Google AI API](docs/google_api_responses.md) -- эталонные дампы JSON всех типов ошибок Google
+- [Спецификация запросов Zed](docs/zed_payload_spec.md) -- структура полезной нагрузки агента, инструментов и системных промптов
+- [Интеграция вне Zed](docs/integrations.md) -- подключение шлюза через cURL, Python, Cursor и консольные утилиты
+- [Настройка домена](docs/custom_domain.md) -- прямой доступ к шлюзу из РФ через Custom Domain без использования VPN
 
 ## План подключения AI-агента
 
