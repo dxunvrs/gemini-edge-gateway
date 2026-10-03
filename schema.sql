@@ -24,3 +24,10 @@ CREATE TABLE IF NOT EXISTS stats_kv (
   value TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TRIGGER IF NOT EXISTS prune_old_logs_trigger
+AFTER INSERT ON logs
+WHEN (NEW.id % 100 = 0 AND NEW.id > 5000)
+BEGIN
+  DELETE FROM logs WHERE id <= (NEW.id - 5000);
+END;

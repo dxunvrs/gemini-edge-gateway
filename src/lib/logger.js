@@ -1,20 +1,26 @@
 const MAX_MEMORY_LOGS = 1000;
-const MAX_PERSISTED_LOGS = 100;
+const MAX_PERSISTED_LOGS = 200;
 let memoryLogs = [];
 
-// Безопасное слияние и сохранение в KV без затирания чужих записей изолятов
+// Сохранение лога в SQLite базу D1
 async function persistLogEntry(entry, env) {
-  if (!env?.GATEWAY_KV) return;
+  if (!env?.DB) return;
   try {
-    const stored = (await env.GATEWAY_KV.get("gateway_logs", "json")) || [];
-    const merged = [entry, ...stored];
-    // Дедупликация по timestamp + key + message
-    const unique = Array.from(
-      new Map(merged.map((item) => [item.timestamp + (item.key || "") + (item.message || ""), item])).values()
-    );
-    await env.GATEWAY_KV.put("gateway_logs", JSON.stringify(unique.slice(0, MAX_PERSISTED_LOGS)));
+    await env.DB.prepare(`
+      INSERT INTO logs (timestamp, level, message, model, key_id, status, duration_ms, details)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      entry.timestamp,
+      entry.level,
+      entry.message,
+      entry.model || null,
+      entry.key || null,
+      entry.status ?? null,
+      entry.durationMs ?? null,
+      entry.details ? JSON.stringify(entry.details) : null
+    ).run();
   } catch (err) {
-    console.error("KV persist error:", err);
+    console.error("D1 persistLogEntry error:", err);
   }
 }
 
@@ -37,16 +43,14 @@ export function logSuccess(model, keyId, durationMs, env = null, ctx = null) {
     durationMs,
   };
 
-
   pushMemoryLog(entry);
   console.log(`[${entry.timestamp}] [SUCCESS] ${model} (${keyId}) in ${durationMs}ms`);
 
-  if (env?.GATEWAY_KV && ctx?.waitUntil) {
+  if (env?.DB && ctx?.waitUntil) {
     ctx.waitUntil(persistLogEntry(entry, env));
   }
 }
 
-// Промежуточная неудачная попытка (429, 503, 401, timeout, 404)
 export function logWarn(model, keyId, status, message, rawDetails = null, durationMs = null, env = null, ctx = null) {
   const entry = {
     timestamp: new Date().toISOString(),
@@ -62,12 +66,12 @@ export function logWarn(model, keyId, status, message, rawDetails = null, durati
   pushMemoryLog(entry);
   console.warn(`[${entry.timestamp}] [WARN] ${model} (${keyId}) -> ${status} ${message} in ${durationMs != null ? durationMs + 'ms' : 'N/A'}`);
 
-  if (env?.GATEWAY_KV && ctx?.waitUntil) {
+  if (env?.DB && ctx?.waitUntil) {
     ctx.waitUntil(persistLogEntry(entry, env));
   }
 }
 
-// Критическая ошибка (когда исчерпаны все попытки роутера)
+// Критический отказ шлюза
 export function logError(message, status = 429, rawDetails = null, env = null, ctx = null) {
   const entry = {
     timestamp: new Date().toISOString(),
@@ -77,26 +81,33 @@ export function logError(message, status = 429, rawDetails = null, env = null, c
     details: rawDetails,
   };
 
-
   pushMemoryLog(entry);
   console.error(`[${entry.timestamp}] [ERROR] ${message} (${status})`);
 
-  if (env?.GATEWAY_KV && ctx?.waitUntil) {
+  if (env?.DB && ctx?.waitUntil) {
     ctx.waitUntil(persistLogEntry(entry, env));
   }
 }
 
 export async function getPersistentLogs(env) {
-  if (env?.GATEWAY_KV) {
+  if (env?.DB) {
     try {
-      const stored = await env.GATEWAY_KV.get("gateway_logs", "json");
-      if (Array.isArray(stored) && stored.length > 0) {
-        const merged = [...memoryLogs, ...stored];
-        const unique = Array.from(new Map(merged.map((item) => [item.timestamp + item.key, item])).values());
-        memoryLogs = unique.slice(0, MAX_MEMORY_LOGS);
-        return memoryLogs;
+      const { results } = await env.DB.prepare(`
+        SELECT timestamp, level, message, model, key_id AS key, status, duration_ms AS durationMs, details
+        FROM logs
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).bind(MAX_PERSISTED_LOGS).all();
+
+      if (Array.isArray(results) && results.length > 0) {
+        return results.map((r) => ({
+          ...r,
+          details: r.details ? JSON.parse(r.details) : null,
+        }));
       }
-    } catch { }
+    } catch (err) {
+      console.error("D1 getPersistentLogs error:", err);
+    }
   }
   return memoryLogs;
 }

@@ -18,23 +18,36 @@ export function recordSuccess(model, keyId, user, env = null, ctx = null) {
   }
   matrix[model][keyId] = (matrix[model][keyId] || 0) + 1;
 
-  if (env?.GATEWAY_KV && ctx?.waitUntil) {
+  if (env?.DB && ctx?.waitUntil) {
+    const payload = JSON.stringify({ matrix, lastResponse, totalRequests });
     ctx.waitUntil(
-      env.GATEWAY_KV.put("gateway_stats", JSON.stringify({ matrix, lastResponse, totalRequests })).catch(() => { })
+      env.DB.prepare(`
+        INSERT INTO stats_kv (key, value, updated_at)
+        VALUES ('gateway_stats', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `).bind(payload, Date.now()).run().catch((err) => {
+        console.error("D1 stats persist error:", err);
+      })
     );
   }
 }
 
 export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
-  if (totalRequests === 0 && env?.GATEWAY_KV) {
+  if (totalRequests === 0 && env?.DB) {
     try {
-      const saved = await env.GATEWAY_KV.get("gateway_stats", "json");
-      if (saved) {
+      const row = await env.DB.prepare(
+        "SELECT value FROM stats_kv WHERE key = 'gateway_stats'"
+      ).first();
+
+      if (row?.value) {
+        const saved = JSON.parse(row.value);
         matrix = saved.matrix || {};
         lastResponse = saved.lastResponse || null;
         totalRequests = saved.totalRequests || 0;
       }
-    } catch { }
+    } catch (err) {
+      console.error("D1 stats read error:", err);
+    }
   }
 
   const logs = await getPersistentLogs(env);
@@ -62,7 +75,12 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       rawModels: discoveryData.rawModels,
       smart: discoveryData.smart,
       lite: discoveryData.lite,
-      keysStatus: discoveryData.validatedKeys.map((k) => ({ id: k.id, isValid: k.isValid, status: k.status })),
+      keysStatus: discoveryData.validatedKeys.map((k) => ({
+        id: k.id,
+        isValid: k.isValid,
+        status: k.status,
+        unchecked: k.unchecked || false,
+      })),
     } : null,
   };
 }
