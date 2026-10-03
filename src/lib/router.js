@@ -95,17 +95,6 @@ function prepareSanitizedTemplate(rawText) {
     .replaceAll('"content":null', '"content":""')
     .replaceAll('"content": null', '"content":""');
 
-  metaZone = metaZone.replace(
-    /"tool_calls"\s*:\s*\[([\s\S]*?)\](?=\s*[,}])/g,
-    (match) => {
-      if (match.includes('thought_signature')) return match;
-      return match.replace(
-        /(?<!\\)("type"\s*:\s*"function")/g,
-        '$1,"extra_content":{"google":{"thought_signature":"skip_thought_signature_validator"}}'
-      );
-    }
-  );
-
   const effortRegexMax = /(?<!\\)"reasoning_effort"\s*:\s*"(max|maximum|extrahigh)"/gi;
   const effortRegexMin = /(?<!\\)"reasoning_effort"\s*:\s*"(min|minimum|none)"/gi;
   metaZone = metaZone.replace(effortRegexMax, '"reasoning_effort":"high"').replace(effortRegexMin, '"reasoning_effort":"low"');
@@ -120,7 +109,36 @@ function prepareSanitizedTemplate(rawText) {
     dataZone = dataZone.slice(0, tailLimit) + tail;
   }
 
-  return metaZone + dataZone;
+  let fullText = metaZone + dataZone;
+
+  fullText = fullText.replace(
+    /"tool_calls"\s*:\s*(\[\s*\{[\s\S]*?\}\s*\])(?=\s*[,}])/g,
+    (match, arrayStr) => {
+      try {
+        const calls = JSON.parse(arrayStr);
+        if (Array.isArray(calls)) {
+          let modified = false;
+          for (const call of calls) {
+            if (call.type === "function") {
+              const hasSig = call.extra_content?.google?.thought_signature;
+              if (!hasSig) {
+                if (!call.extra_content) call.extra_content = {};
+                if (!call.extra_content.google) call.extra_content.google = {};
+                call.extra_content.google.thought_signature = "skip_thought_signature_validator";
+                modified = true;
+              }
+            }
+          }
+          if (modified) {
+            return `"tool_calls":${JSON.stringify(calls)}`;
+          }
+        }
+      } catch { }
+      return match;
+    }
+  );
+
+  return fullText;
 }
 
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
