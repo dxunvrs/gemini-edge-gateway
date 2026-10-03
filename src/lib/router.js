@@ -142,6 +142,14 @@ function prepareSanitizedTemplate(rawText) {
 }
 
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
+  // Очистка устаревших блокировок в памяти
+  const nowMs = Date.now();
+  for (const k of Object.keys(pairCooldowns)) {
+    if (pairCooldowns[k] <= nowMs) {
+      delete pairCooldowns[k];
+    }
+  }
+
   const headSnippet = rawText.slice(0, 500);
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
   const targetCascade = isLite ? cascades.lite : cascades.smart;
