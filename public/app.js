@@ -9,7 +9,20 @@ const logsContainer = document.getElementById("logs-scroll-viewport");
 
 refreshBtn.onclick = () => loadDashboard();
 
-const API_BASE = "";
+const STATUS_MAP = {
+  "200": "status-200",
+  "RPM": "status-rpm",
+  "TPM": "status-tpm",
+  "503": "status-503",
+  "RPD": "status-rpd",
+  "limit: 0": "status-zero",
+  "KEY_ERR": "status-keyerr",
+  "400": "status-keyerr",
+  "401": "status-keyerr",
+  "403": "status-keyerr",
+  "404": "status-404",
+  "UNDEFINED": "status-undefined",
+};
 
 async function loadDashboard() {
   statusIndicator.textContent = "SYNCING...";
@@ -17,7 +30,7 @@ async function loadDashboard() {
     const savedToken = localStorage.getItem("dashboard_auth") || "";
     const headers = savedToken ? { "Authorization": `Bearer ${savedToken}` } : {};
 
-    const res = await fetch(`${API_BASE}/api/stats`, { headers });
+    const res = await fetch("/api/stats", { headers });
 
     if (res.status === 401) {
       localStorage.removeItem("dashboard_auth");
@@ -25,52 +38,52 @@ async function loadDashboard() {
       if (pass) {
         localStorage.setItem("dashboard_auth", pass.trim());
         return loadDashboard();
-      } else {
-        throw new Error("Требуется пароль дашборда");
       }
+      throw new Error("Требуется пароль дашборда");
     }
 
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
     statusIndicator.textContent = "LIVE";
 
     renderOverview(data);
     renderKeys(data.discovery?.keysStatus || []);
-    renderMatrix(data.matrix || {});
+    renderMatrix(data.matrix || {}, data.logs || []);
     renderModels(data.discovery);
 
     allLogs = data.logs || [];
     document.getElementById("logs-counter").textContent = `${allLogs.length} ENTRIES`;
 
-    // Сброс и рендер первой пачки логов
     logsTbody.innerHTML = "";
     renderedLogsCount = 0;
     renderNextLogsChunk();
 
-    // Если остались ключи, не влезшие в лимит — фоном допроверяем следующую пачку
     if (data.discovery?.hasMoreUnchecked) {
       statusIndicator.textContent = "VALIDATING NEXT BATCH...";
       setTimeout(async () => {
         try {
-          await fetch(`${API_BASE}/api/stats?validate_next=true`, { headers });
-          loadDashboard(); // перерисовываем с новыми проверенными ключами
+          await fetch("/api/stats?validate_next=true", { headers });
+          loadDashboard();
         } catch { }
       }, 1000);
     }
-
   } catch (err) {
     statusIndicator.textContent = "OFFLINE: " + err.message;
   }
 }
 
 function renderOverview(data) {
-  document.getElementById("total-reqs").textContent = data.totalRequests;
+  document.getElementById("success-rate").textContent = data.successRate || "100% (0/0)";
 
-  if (data.lastResponse) {
-    const r = data.lastResponse;
-    document.getElementById("last-resp").textContent =
-      `${r.model} (${r.keyId}) by ${r.user} at ${r.timestamp.split("T")[1].replace("Z", "")}`;
+  const r = data.lastResponse;
+  if (r) {
+    const d = new Date(r.timestamp);
+    const timeFormatted = isNaN(d.getTime())
+      ? r.timestamp.split("T")[1]?.slice(0, 5) || r.timestamp
+      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    document.getElementById("last-resp").textContent = `${r.model} (${r.keyId}) by ${r.user} at ${timeFormatted}`;
   } else {
     document.getElementById("last-resp").textContent = "NO TRAFFIC YET";
   }
@@ -90,28 +103,38 @@ function renderKeys(keys) {
     container.innerHTML = "<div>NO GEMINI_KEY VARIABLES FOUND</div>";
     return;
   }
+
   container.innerHTML = keys.map(k => {
     let statusClass = "key-status-ok";
     let statusText = "VALID (200)";
 
     if (k.unchecked) {
-      statusClass = "key-status-warn";
+      statusClass = "key-status-unchecked";
       statusText = "UNCHECKED (?)";
     } else if (!k.isValid) {
       statusClass = "key-status-bad";
       statusText = `INVALID (HTTP ${k.status})`;
     }
 
-    return `
-      <div class="key-row">
-        <span>${k.id}</span>
-        <span class="${statusClass}">${statusText}</span>
-      </div>
-    `;
+    return `<div class="key-row"><span>${k.id}</span><span class="${statusClass}">${statusText}</span></div>`;
   }).join("");
 }
 
-function renderMatrix(matrix) {
+function parseStatusFromLog(found) {
+  if (!found) return "-";
+  if (found.status === 200) return "200";
+  const msg = (found.message || "").toUpperCase();
+  if (msg.includes("RPD")) return "RPD";
+  if (msg.includes("TPM")) return "TPM";
+  if (msg.includes("RPM")) return "RPM";
+  if (msg.includes("503") || found.status === 503) return "503";
+  if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) return "limit: 0";
+  if (msg.includes("AUTH") || msg.includes("INVALID") || found.status === 401 || found.status === 403) return "KEY_ERR";
+  if (msg.includes("404") || found.status === 404) return "404";
+  return found.status ? String(found.status) : "UNDEFINED";
+}
+
+function renderMatrix(matrix, logs = []) {
   const table = document.getElementById("matrix-table");
   const thead = table.querySelector("thead");
   const tbody = table.querySelector("tbody");
@@ -119,32 +142,42 @@ function renderMatrix(matrix) {
   const models = Object.keys(matrix);
   if (!models.length) {
     thead.innerHTML = "";
-    tbody.innerHTML = "<tr><td>NO DATA RECORDED</td></tr>";
+    tbody.innerHTML = "<tr><td colspan=\"100\">NO DATA RECORDED</td></tr>";
     return;
   }
 
   const keys = Object.keys(matrix[models[0]] || {});
-  thead.innerHTML = "<tr><th>MODEL \\ KEY</th>" + keys.map(k => `<th>${k}</th>`).join("") + "</tr>";
+  thead.innerHTML = `<tr><th class="model-col-header">MODEL \\ KEY</th>${keys.map(k => {
+    const compactKey = k.replace(/^GEMINI_KEYS?\s*#?/i, "KEY #").trim().replace(/#\s*#/, "#");
+    return `<th class="key-col-header" title="${k}">${compactKey}</th>`;
+  }).join("")}</tr>`;
 
   tbody.innerHTML = models.map(m => {
     const cells = keys.map(k => {
-      const item = matrix[m][k] || { hits: 0, percentage: 0 };
-      return `<td>${item.percentage}% (${item.hits})</td>`;
+      const item = matrix[m][k] || { hits: 0, status: "-" };
+      let statusText = item.status;
+      if (!statusText || statusText === "-") {
+        const found = logs.find(l => l.model === m && l.key === k);
+        statusText = found ? parseStatusFromLog(found) : (item.hits > 0 ? "200" : "-");
+      }
+      const badgeClass = STATUS_MAP[statusText] || (statusText === "-" ? "status-none" : "status-undefined");
+      return `<td class="matrix-cell"><span class="status-badge ${badgeClass}">${statusText}</span></td>`;
     }).join("");
-    return `<tr><td><strong>${m}</strong></td>${cells}</tr>`;
+    return `<tr><td class="model-name-cell" title="${m}"><strong>${m}</strong></td>${cells}</tr>`;
   }).join("");
 }
 
 function renderModels(disc) {
-  document.getElementById("smart-list").innerHTML =
-    (disc?.smart || []).map(m => `<li>${m}</li>`).join("") || "<li>None</li>";
-  document.getElementById("lite-list").innerHTML =
-    (disc?.lite || []).map(m => `<li>${m}</li>`).join("") || "<li>None</li>";
-  document.getElementById("raw-list").innerHTML =
-    (disc?.rawModels || []).map(m => `<li>${m}</li>`).join("") || "<li>None</li>";
+  const renderList = (id, items) => {
+    document.getElementById(id).innerHTML = items?.length
+      ? items.map(m => `<li>${m}</li>`).join("")
+      : "<li>None</li>";
+  };
+  renderList("smart-list", disc?.smart);
+  renderList("lite-list", disc?.lite);
+  renderList("raw-list", disc?.rawModels);
 }
 
-// Виртуальный рендер: подгружает логи порциями по 50 строк при скролле
 function renderNextLogsChunk() {
   if (renderedLogsCount >= allLogs.length) return;
 
@@ -156,24 +189,21 @@ function renderNextLogsChunk() {
       localTime = isNaN(d.getTime()) ? l.timestamp : d.toLocaleTimeString();
     }
 
-    return `
-      <tr>
-        <td>${localTime}</td>
-        <td class="lvl-${l.level}">${(l.level || "").toUpperCase()}</td>
-        <td>${l.message || ""}</td>
-        <td>${l.model || "—"}</td>
-        <td>${l.key || "—"}</td>
-        <td>${l.status || "—"}</td>
-        <td>${l.durationMs != null ? l.durationMs + 'ms' : "—"}</td>
-      </tr>
-    `;
+    return `<tr>
+      <td>${localTime}</td>
+      <td class="lvl-${l.level}">${(l.level || "").toUpperCase()}</td>
+      <td>${l.message || ""}</td>
+      <td>${l.model || "—"}</td>
+      <td>${l.key || "—"}</td>
+      <td>${l.status || "—"}</td>
+      <td>${l.durationMs != null ? `${l.durationMs}ms` : "—"}</td>
+    </tr>`;
   }).join("");
 
   logsTbody.insertAdjacentHTML("beforeend", rowsHtml);
   renderedLogsCount += nextSlice.length;
 }
 
-// Слушатель скролла для бесконечной подгрузки
 logsContainer.addEventListener("scroll", () => {
   if (logsContainer.scrollTop + logsContainer.clientHeight >= logsContainer.scrollHeight - 100) {
     renderNextLogsChunk();

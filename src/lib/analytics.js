@@ -55,17 +55,94 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
   const allModels = discoveryData ? [...discoveryData.smart, ...discoveryData.lite] : Object.keys(matrix);
   const uniqueModels = [...new Set(allModels)];
 
-  for (const model of uniqueModels) {
-    formattedMatrix[model] = {};
-    for (const key of allKeys) {
-      const hits = (matrix[model] && matrix[model][key.id]) || 0;
-      const pct = totalRequests > 0 ? ((hits / totalRequests) * 100).toFixed(1) : "0.0";
-      formattedMatrix[model][key.id] = { hits, percentage: Number(pct) };
+  // Определение последнего статуса ответа для каждой пары (модель, ключ) по логам (от свежих к старым)
+  const lastStatusMap = {};
+  for (const log of logs) {
+    if (log.model && log.key) {
+      const pairKey = `${log.model}:${log.key}`;
+      if (!lastStatusMap[pairKey]) {
+        let code = "-";
+        const logTime = new Date(log.timestamp).getTime();
+        const now = Date.now();
+        const isPastMidnight = new Date().getUTCHours() === 0 && (now - logTime > 600000); // Simple heuristic: if it's 00:XX and log is old
+
+        if (log.status === 200) {
+          code = "200";
+        } else {
+          const msg = (log.message || "").toUpperCase();
+          let type = "UNDEFINED";
+          if (msg.includes("RPD")) type = "RPD";
+          else if (msg.includes("TPM")) type = "TPM";
+          else if (msg.includes("RPM")) type = "RPM";
+          else if (msg.includes("503") || log.status === 503) type = "503";
+          else if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) type = "limit: 0";
+          else if (msg.includes("AUTH") || msg.includes("INVALID") || log.status === 401 || log.status === 403) type = "KEY_ERR";
+          else if (msg.includes("404") || log.status === 404) type = "404";
+          else if (log.status) type = String(log.status);
+
+          // Auto-reset RPD after midnight UTC
+          if (type === "RPD") {
+            const logDate = new Date(log.timestamp);
+            const todayUtc = new Date();
+            // If log was yesterday (UTC), reset status to "-"
+            if (logDate.getUTCDate() !== todayUtc.getUTCDate()) {
+              type = "-";
+            }
+          }
+          code = type;
+        }
+        lastStatusMap[pairKey] = code;
+      }
     }
   }
 
+  for (const model of uniqueModels) {
+    formattedMatrix[model] = {};
+    for (const key of allKeys) {
+      const pairKey = `${model}:${key.id}`;
+      const hits = (matrix[model] && matrix[model][key.id]) || 0;
+      const status = lastStatusMap[pairKey] || "-";
+      formattedMatrix[model][key.id] = { hits, status };
+    }
+  }
+
+  let successCount = 0;
+  let errorCount = 0;
+
+  if (env?.DB) {
+    try {
+      const statsRow = await env.DB.prepare(`
+        SELECT
+          COUNT(CASE WHEN level = 'success' THEN 1 END) as success_count,
+          COUNT(CASE WHEN level = 'error' THEN 1 END) as error_count
+        FROM logs
+      `).first();
+
+      if (statsRow) {
+        successCount = statsRow.success_count || 0;
+        errorCount = statsRow.error_count || 0;
+      }
+    } catch (e) {
+      console.error("D1 stats counts error:", e);
+    }
+  }
+
+  // Если в D1 записей нет, считаем по memoryLogs
+  if (successCount === 0 && errorCount === 0 && logs.length > 0) {
+    successCount = logs.filter(l => l.level === "success").length;
+    errorCount = logs.filter(l => l.level === "error").length;
+  }
+
+  const totalEvaluated = successCount + errorCount;
+  const successRate = totalEvaluated > 0
+    ? `${((successCount / totalEvaluated) * 100).toFixed(1)}% (${successCount}/${totalEvaluated})`
+    : "100% (0/0)";
+
   return {
     totalRequests,
+    successRate,
+    successCount,
+    errorCount,
     lastResponse,
     matrix: formattedMatrix,
     logs,

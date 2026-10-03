@@ -1,0 +1,150 @@
+@font-face {
+  font-family: "SuisseIntl";
+  src: url("/assets/fonts/SuisseIntl-Regular.woff2") format("woff2");
+  font-weight: 400 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SuisseIntl";
+  src: url("/assets/fonts/SuisseIntl-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SuisseIntlMono";
+  src: url("/assets/fonts/SuisseIntlMono-Regular.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Core Palette */
+  --bg-top: #ffffff;
+  --bg-left: #d8d8d8;
+  --bg-right: #1f1f1f;
+  --bg-footer: #141414;
+  --bg-matrix-cell: #e2e2e2;
+  --bg-matrix-table: #e5e5e5;
+  --bg-model-cell: #dfdfdf;
+
+  --text-dark: #1f1f1f;
+  --text-light: #ffffff;
+  --text-muted: rgba(31, 31, 31, 0.6);
+  --text-muted-dark: rgba(255, 255, 255, 0.45);
+  --accent: #a1ffcb;
+
+  --border-dark: 1px solid #1f1f1f;
+  --border-light: 1px solid #333333;
+  --border-dashed-color: rgba(31, 31, 31, 0.25);
+  --border-logs-inner: rgba(255, 255, 255, 0.1);
+  --border-logs-sticky: rgba(255, 255, 255, 0.2);
+
+  /* Status Colors (Pastel) */
+  --st-200-bg: #a1ffcb;
+  --st-200-text: #0d4427;
+  --st-limit-bg: #fef08a;
+  --st-limit-text: #513006;
+  --st-503-bg: #fed7aa;
+  --st-503-text: #6a2505;
+  --st-rpd-bg: #fecaca;
+  --st-rpd-text: #6a1515;
+  --st-zero-bg: #e9d5ff;
+  --st-zero-text: #4a127a;
+  --st-keyerr-bg: #fca5a5;
+  --st-keyerr-text: #701a24;
+  --st-404-bg: #c7d2fe;
+  --st-404-text: #3730a3;
+  --st-undef-bg: #9ca3af;
+  --st-undef-text: #111827;
+  --st-none-text: #888888;
+
+  /* Validation Colors */
+  --val-ok: #0d8342;
+  --val-bad: #dc2626;
+  --val-unchecked: #555555;
+
+  /* Log Level Colors */
+  --lvl-err: #ff5252;
+  --lvl-warn: #ffcc00;
+  --lvl-succ: #00e676;
+  --lvl-info: #38bdf8;
+  --lvl-err-bg: rgba(255, 82, 82, 0.1);
+
+  --shadow-matrix: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --font-main: "SuisseIntl", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "SuisseIntlMono", monospace;
+}
+
+body {
+  font: 14px/1.45 var(--font-main);
+  background: var(--bg-top);
+  color: var(--text-dark);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.custom-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.section-num,
+.section-num-dark {
+  font-family: var(--font-mono);
+  margin-right: 6px;
+  opacity: 0.6;
+}
+
+.section-num-dark {
+  color: var(--text-muted-dark);
+}
+
+.sub-title {
+  font: 700 14px var(--font-main);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.notice-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-left: 3px solid var(--text-dark);
+  padding: 6px 0 6px 12px;
+  margin-bottom: 16px;
+}
+
+.notice-tag {
+  font: 700 10px var(--font-mono);
+  background: var(--bg-right);
+  color: var(--text-light);
+  padding: 3px 7px;
+  border-radius: 0;
+  border: var(--border-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: inline-block;
+}
+
+.notice-text {
+  font-size: 12px;
+  font-weight: 600;
+}

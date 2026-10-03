@@ -1,0 +1,130 @@
+.logs-section {
+  background: var(--bg-right);
+  color: var(--text-light);
+  padding: 40px 48px;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: var(--border-light);
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+}
+
+.logs-container {
+  width: 100%;
+  max-height: 400px;
+  overflow: auto;
+  border: 1px solid var(--border-logs-inner);
+}
+
+#logs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#logs-table th,
+#logs-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: var(--border-light);
+  font: 12px var(--font-mono);
+  white-space: nowrap;
+}
+
+#logs-table th {
+  font-family: var(--font-main);
+  font-weight: 700;
+  text-transform: uppercase;
+  background: var(--bg-right);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 2px solid var(--border-logs-sticky);
+}
+
+.lvl-error {
+  color: var(--lvl-err);
+  font-weight: 700;
+}
+
+.lvl-warn {
+  color: var(--lvl-warn);
+  font-weight: 700;
+}
+
+.lvl-success {
+  color: var(--lvl-succ);
+  font-weight: 700;
+}
+
+.lvl-info {
+  color: var(--lvl-info);
+  font-weight: 700;
+}
+
+#logs-table tr:has(.lvl-error) {
+  background: var(--lvl-err-bg);
+}
+
+.logs-meta {
+  font: 700 12px var(--font-mono);
+  color: var(--accent);
+}
+
+/* Footer */
+.dashboard-footer {
+  background: var(--bg-footer);
+  color: var(--text-muted-dark);
+  text-align: center;
+  padding: 24px;
+  font: 700 11px var(--font-mono);
+  text-transform: uppercase;
+  border-top: var(--border-light);
+}
+
+.dashboard-footer a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: opacity .2s;
+}
+
+.dashboard-footer a:hover {
+  opacity: .8;
+  text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .top-grid {
+    grid-template-columns: 1fr;
+    padding: 24px 16px;
+    gap: 20px;
+  }
+
+  .panel-left {
+    border-right: 0;
+    border-bottom: var(--border-dark);
+    padding: 0 0 20px;
+  }
+
+  .panel-right {
+    padding-left: 0;
+  }
+
+  .hero-text {
+    font-size: 42px;
+  }
+
+  .matrix-section,
+  .logs-section {
+    padding: 24px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .models-trio {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,130 @@
+.top-grid {
+  display: grid;
+  grid-template-columns: 1.15fr .85fr;
+  background: var(--bg-left);
+  border-bottom: var(--border-dark);
+  padding: 40px 48px;
+  gap: 32px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-left {
+  border-right: var(--border-dark);
+  padding-right: 32px;
+}
+
+.panel-right {
+  padding-left: 8px;
+}
+
+.panel-section {
+  border-bottom: var(--border-dark);
+  padding: 0 0 20px;
+  margin-bottom: 20px;
+}
+
+.no-border-bottom {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.hero-text {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: -.04em;
+  line-height: .95;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.summary-details div {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.keys-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.key-row {
+  display: flex;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.03);
+  margin-bottom: 2px;
+  padding: 6px 12px;
+  font: 700 12px var(--font-mono);
+  border-left: 3px solid var(--val-ok);
+}
+
+.key-row:has(.key-status-bad) {
+  border-left-color: var(--val-bad);
+}
+
+.key-row:has(.key-status-unchecked) {
+  border-left-color: var(--val-unchecked);
+}
+
+.key-status-ok {
+  color: var(--val-ok);
+}
+
+.key-status-unchecked {
+  color: var(--val-unchecked);
+}
+
+.key-status-bad {
+  color: var(--val-bad);
+}
+
+.models-trio {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.model-col-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.list-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.regex-tag {
+  font: 10px var(--font-mono);
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  word-break: break-all;
+}
+
+.raw-list {
+  list-style: none;
+  max-height: 154px;
+  overflow-y: auto;
+  font: 11px var(--font-mono);
+}
+
+.raw-list li {
+  margin-bottom: 4px;
+  opacity: .9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.raw-list li::before {
+  content: "- ";
+  opacity: 0.5;
+}
