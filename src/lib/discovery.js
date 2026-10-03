@@ -108,7 +108,7 @@ export async function getDiscoveryData(keys, env = null, forceBatch = false) {
     } catch { }
   }
 
-  const isChatModel = (name) => /^gemini-\d+(\.\d+)?-(flash|flash-lite|pro)(-preview)?$/i.test(name.toLowerCase());
+  const isChatModel = (name) => /^gemini-\d+(\.\d+)?-(flash|flash-lite)(-preview)?$/i.test(name.toLowerCase());
   const chatModels = rawModels.filter(isChatModel);
   const sorted = chatModels.sort((a, b) => parseVer(b) - parseVer(a));
 
