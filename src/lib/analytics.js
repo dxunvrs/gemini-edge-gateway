@@ -84,8 +84,9 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
 
           if (type === "RPD") {
             const logDate = new Date(log.timestamp);
-            const todayUtc = new Date();
-            if (logDate.getUTCDate() !== todayUtc.getUTCDate()) {
+            const midnightUtc = new Date(logDate);
+            midnightUtc.setUTCHours(24, 0, 0, 0);
+            if (now >= midnightUtc.getTime()) {
               type = "-";
             }
           }
