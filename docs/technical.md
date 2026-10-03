@@ -49,7 +49,7 @@ let dataZone = rawText.slice(cutoff);
 
 ## Особенности Google Protobuf адаптера и thought_signature
 
-> [!NOTE]
+> [!note]
 > При проектировании шлюза были учтены следующие проблемы совместимости, зафиксированные сообществом на официальном форуме Google AI Developers:
 > - [Gemini 3.1 Pro Preview: public image URLs return 403 / native 400 OpenAI compatible while inline images work](https://discuss.ai.google.dev/t/gemini-3-1-pro-preview-public-image-urls-return-403-native-400-openai-compatible-while-inline-images-work/183023) -- разбор причин сбоя валидации при передаче ссылок на изображения и необходимости инлайнинга base64
 > - [Gemini 3.6 Flash: OpenAI-compatible token limits, response fields and auth keys](https://discuss.ai.google.dev/t/gemini-3-6-flash-openai-compatible-token-limits-response-fields-and-auth-keys/183372/2) -- анализ форматов ответов адаптера OpenAI, сигнатур мыслей и расхождения полей квот
