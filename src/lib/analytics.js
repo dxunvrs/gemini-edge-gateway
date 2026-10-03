@@ -1,4 +1,5 @@
 import { getPersistentLogs } from "./logger.js";
+import { getRouterLiveState } from "./router.js";
 
 let matrix = {};
 let lastResponse = null;
@@ -51,6 +52,9 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
   }
 
   const logs = await getPersistentLogs(env);
+  const liveState = getRouterLiveState();
+  const now = Date.now();
+
   const formattedMatrix = {};
   const allModels = discoveryData ? [...discoveryData.smart, ...discoveryData.lite] : Object.keys(matrix);
   const uniqueModels = [...new Set(allModels)];
@@ -63,8 +67,6 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       if (!lastStatusMap[pairKey]) {
         let code = "-";
         const logTime = new Date(log.timestamp).getTime();
-        const now = Date.now();
-        const isPastMidnight = new Date().getUTCHours() === 0 && (now - logTime > 600000); // Simple heuristic: if it's 00:XX and log is old
 
         if (log.status === 200) {
           code = "200";
@@ -80,15 +82,18 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
           else if (msg.includes("404") || log.status === 404) type = "404";
           else if (log.status) type = String(log.status);
 
-          // Auto-reset RPD after midnight UTC
           if (type === "RPD") {
             const logDate = new Date(log.timestamp);
             const todayUtc = new Date();
-            // If log was yesterday (UTC), reset status to "-"
             if (logDate.getUTCDate() !== todayUtc.getUTCDate()) {
               type = "-";
             }
           }
+
+          if (["503", "RPM", "TPM"].includes(type) && (now - logTime > 60000)) {
+            type = "-";
+          }
+
           code = type;
         }
         lastStatusMap[pairKey] = code;
@@ -101,7 +106,26 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
     for (const key of allKeys) {
       const pairKey = `${model}:${key.id}`;
       const hits = (matrix[model] && matrix[model][key.id]) || 0;
-      const status = lastStatusMap[pairKey] || "-";
+
+      let status = "-";
+      const unlockTime = liveState.pairCooldowns[pairKey];
+      const isDeadKey = liveState.deadKeys.includes(key.id);
+      const isDeadModel = liveState.deadModels.includes(model);
+
+      if (isDeadKey) {
+        status = "KEY_ERR";
+      } else if (unlockTime && unlockTime > now) {
+        const historyStatus = lastStatusMap[pairKey];
+        status = (historyStatus && historyStatus !== "200") ? historyStatus : "RPD";
+      } else if (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) {
+        status = "503";
+      } else if (isDeadModel) {
+        const historyStatus = lastStatusMap[pairKey];
+        status = (historyStatus === "limit: 0" || historyStatus === "404") ? historyStatus : "404";
+      } else {
+        status = lastStatusMap[pairKey] || "-";
+      }
+
       formattedMatrix[model][key.id] = { hits, status };
     }
   }

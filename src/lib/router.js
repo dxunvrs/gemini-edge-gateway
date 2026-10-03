@@ -141,6 +141,15 @@ function prepareSanitizedTemplate(rawText) {
   return fullText;
 }
 
+export function getRouterLiveState() {
+  return {
+    modelCooldowns,
+    pairCooldowns,
+    deadKeys: Array.from(deadKeys),
+    deadModels: Array.from(deadModels)
+  };
+}
+
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
   // Очистка устаревших блокировок в памяти
   const nowMs = Date.now();
