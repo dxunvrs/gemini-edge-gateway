@@ -9,9 +9,7 @@ const logsContainer = document.getElementById("logs-scroll-viewport");
 
 refreshBtn.onclick = () => loadDashboard();
 
-const API_BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-  ? "https://gemini-edge-gateway.sergey-pugin080107.workers.dev"
-  : "";
+const API_BASE = "";
 
 async function loadDashboard() {
   statusIndicator.textContent = "SYNCING...";
