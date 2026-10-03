@@ -416,6 +416,10 @@ body {
   color: var(--color-error);
 }
 
+.key-status-warn {
+  color: var(--color-warn);
+}
+
 /* Контейнер таблицы трафика */
 .scrollable-table-box {
   width: 100%;

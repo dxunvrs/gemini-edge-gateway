@@ -35,6 +35,17 @@ async function loadDashboard() {
     renderedLogsCount = 0;
     renderNextLogsChunk();
 
+    // Если остались ключи, не влезшие в лимит — фоном допроверяем следующую пачку
+    if (data.discovery?.hasMoreUnchecked) {
+      statusIndicator.textContent = "VALIDATING NEXT BATCH...";
+      setTimeout(async () => {
+        try {
+          await fetch(`${API_BASE}/api/stats?validate_next=true`);
+          loadDashboard(); // перерисовываем с новыми проверенными ключами
+        } catch { }
+      }, 1000);
+    }
+
   } catch (err) {
     statusIndicator.textContent = "OFFLINE: " + err.message;
   }
@@ -66,14 +77,25 @@ function renderKeys(keys) {
     container.innerHTML = "<div>NO GEMINI_KEY VARIABLES FOUND</div>";
     return;
   }
-  container.innerHTML = keys.map(k => `
-    <div class="key-row">
-      <span>${k.id}</span>
-      <span class="${k.isValid ? 'key-status-ok' : 'key-status-bad'}">
-        ${k.isValid ? 'VALID (200)' : 'INVALID (HTTP ' + k.status + ')'}
-      </span>
-    </div>
-  `).join("");
+  container.innerHTML = keys.map(k => {
+    let statusClass = "key-status-ok";
+    let statusText = "VALID (200)";
+
+    if (k.unchecked) {
+      statusClass = "key-status-warn";
+      statusText = "UNCHECKED (?)";
+    } else if (!k.isValid) {
+      statusClass = "key-status-bad";
+      statusText = `INVALID (HTTP ${k.status})`;
+    }
+
+    return `
+      <div class="key-row">
+        <span>${k.id}</span>
+        <span class="${statusClass}">${statusText}</span>
+      </div>
+    `;
+  }).join("");
 }
 
 function renderMatrix(matrix) {

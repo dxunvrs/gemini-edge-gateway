@@ -22,7 +22,8 @@ export default {
       }
 
       try {
-        const discovery = await getDiscoveryData(keys);
+        const forceBatch = url.searchParams.get("validate_next") === "true";
+        const discovery = await getDiscoveryData(keys, env, forceBatch);
         const stats = await getAnalyticsSnapshot(discovery, keys, env);
         return new Response(JSON.stringify(stats), {
           headers: {
@@ -99,7 +100,7 @@ export default {
       }
 
       try {
-        const discovery = await getDiscoveryData(keys);
+        const discovery = await getDiscoveryData(keys, env);
         return await executeStratifiedRouting(request, rawBody, authResult.user, discovery, discovery.activeKeys, env, ctx);
       } catch (err) {
         return new Response(
