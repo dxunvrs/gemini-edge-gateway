@@ -9,7 +9,7 @@ export default {
     const url = new URL(request.url);
     const { keys, authorizedUsers } = parseConfig(env);
 
-    // Публичный эндпоинт аналитики с поддержкой CORS
+    // Публичный эндпоинт аналитики (защищен паролем, если задан DASHBOARD_PASSWORD)
     if (url.pathname === "/api/stats") {
       const corsHeaders = {
         "Access-Control-Allow-Origin": "*",
@@ -19,6 +19,20 @@ export default {
 
       if (request.method === "OPTIONS") {
         return new Response(null, { headers: corsHeaders });
+      }
+
+      // Проверка пароля дашборда (только если переменная задана)
+      const { dashboardPasswords } = parseConfig(env);
+      if (dashboardPasswords.length > 0) {
+        const clientToken = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim()
+          || url.searchParams.get("auth");
+
+        if (!clientToken || !dashboardPasswords.includes(clientToken)) {
+          return new Response(JSON.stringify({ error: "Unauthorized: Dashboard Password Required" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
       }
 
       try {

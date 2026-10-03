@@ -14,7 +14,22 @@ const API_BASE = "";
 async function loadDashboard() {
   statusIndicator.textContent = "SYNCING...";
   try {
-    const res = await fetch(`${API_BASE}/api/stats`);
+    const savedToken = localStorage.getItem("dashboard_auth") || "";
+    const headers = savedToken ? { "Authorization": `Bearer ${savedToken}` } : {};
+
+    const res = await fetch(`${API_BASE}/api/stats`, { headers });
+
+    if (res.status === 401) {
+      localStorage.removeItem("dashboard_auth");
+      const pass = prompt("Доступ ограничен. Введите DASHBOARD_PASSWORD:");
+      if (pass) {
+        localStorage.setItem("dashboard_auth", pass.trim());
+        return loadDashboard();
+      } else {
+        throw new Error("Требуется пароль дашборда");
+      }
+    }
+
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
 
@@ -38,7 +53,7 @@ async function loadDashboard() {
       statusIndicator.textContent = "VALIDATING NEXT BATCH...";
       setTimeout(async () => {
         try {
-          await fetch(`${API_BASE}/api/stats?validate_next=true`);
+          await fetch(`${API_BASE}/api/stats?validate_next=true`, { headers });
           loadDashboard(); // перерисовываем с новыми проверенными ключами
         } catch { }
       }, 1000);

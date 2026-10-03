@@ -32,5 +32,14 @@ export function parseConfig(env) {
     }
   }
 
-  return { keys, authorizedUsers };
+  // Сбор паролей дашборда (dashboard_password*)
+  const dashboardPasswords = [];
+  for (const [name, val] of Object.entries(env)) {
+    if (/^dashboard_password/i.test(name) && typeof val === "string") {
+      const passes = val.split(",").map((p) => p.trim()).filter(Boolean);
+      dashboardPasswords.push(...passes);
+    }
+  }
+
+  return { keys, authorizedUsers, dashboardPasswords };
 }
