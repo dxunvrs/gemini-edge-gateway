@@ -4,6 +4,7 @@
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Cloudflare D1](https://img.shields.io/badge/Storage-D1_SQLite-0051c3?style=flat-square&logo=sqlite&logoColor=white)](https://developers.cloudflare.com/d1/)
 [![Zed IDE](https://img.shields.io/badge/Zed-Compatible-000000?style=flat-square&logo=zedindustries&logoColor=white)](https://zed.dev)
+[![VPN](https://img.shields.io/badge/VPN-Not_Required-2ea44f?style=flat-square)](docs/custom_domain.md)
 
 ![Gemini Edge Gateway](Attachments/aspen_like_logo.jpg)
 
@@ -28,6 +29,8 @@
 - нулевые финансовые затраты: объединение пула бесплатных ключей Google AI Studio (максимус 9 независимых проектов) в единый балансировщик с прозрачной ротацией
 - защита от сбоев: автоматический каскадный переход между моделями (`gemini-3.8-flash` -> `gemini-3.7-flash` -> `...`) при перегрузках Google (503) или исчерпании квот (429)
 - исправление несовместимостей: прозрачное устранение расхождений между спецификацией OpenAI в Zed и Protobuf-адаптером Google
+- обеспечение прямой работы без VPN, т.к. шлюз берет на себя сетевое взаимодействие с Google из глобальной сети Cloudflare, избавляя от необходимости держать VPN или локальные прокси включенными на компьютере
+> Однако при получении API ключей от Google и взаимодействия с воркером на Cloudflare необходимо использовать VPN. Так что это решение скорее не о том, как работать без VPN, а о том, как обеспечить другим доступ работы без VPN.
 
 > [!note]
 > На бесплатном тарифе Google AI Studio действует строгое аппаратное ограничение: **250 000 токенов в минуту (TPM)**. Физический контекст моделей Gemini достигает чуть более 1 млн. токенов, однако отправка запроса объемом более 250k токенов приведет к ошибке `429 Resource Exhausted`.
