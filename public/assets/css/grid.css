@@ -5,6 +5,7 @@
   border-bottom: var(--border-main);
   padding: 40px 48px;
   gap: 32px;
+  align-items: start;
 }
 
 .panel {
@@ -24,12 +25,13 @@
   padding-left: 8px;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .panel-keys-section {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 0;
 }
 
 .panel-keys-section h2 {

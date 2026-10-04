@@ -51,6 +51,7 @@ async function loadDashboard() {
     renderKeys(data.discovery?.keysStatus || []);
     renderMatrix(data.matrix || {}, data.logs || []);
     renderModels(data.discovery);
+    alignLayout();
 
     allLogs = data.logs || [];
     document.getElementById("logs-counter").textContent = `${allLogs.length} ENTRIES`;
@@ -148,12 +149,20 @@ function alignLayout() {
   const leftPanel = document.querySelector(".panel-left");
   const keysContainer = document.getElementById("keys-status-container");
   if (leftPanel && keysContainer) {
-    const totalLeftH = leftPanel.clientHeight;
-    const h2 = document.querySelector(".panel-right .sub-title");
-    const titleH = h2 ? (h2.offsetHeight + 16) : 36;
-    const targetH = Math.max(120, totalLeftH - titleH);
-    keysContainer.style.height = `${targetH}px`;
-    keysContainer.style.maxHeight = `${targetH}px`;
+    if (window.innerWidth <= 900) {
+      keysContainer.style.height = "auto";
+      keysContainer.style.maxHeight = "350px";
+    } else {
+      const leftHeight = leftPanel.offsetHeight;
+      const h2 = document.querySelector(".panel-right .sub-title");
+      const titleHeight = h2 ? h2.offsetHeight : 20;
+      // h2 margin-bottom is 16px
+      const targetHeight = leftHeight - titleHeight - 16;
+      if (targetHeight > 0) {
+        keysContainer.style.height = `${targetHeight}px`;
+        keysContainer.style.maxHeight = `${targetHeight}px`;
+      }
+    }
   }
 }
 
