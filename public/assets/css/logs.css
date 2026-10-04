@@ -1,22 +1,27 @@
 .logs-section {
-  background: var(--bg-right);
-  color: var(--text-light);
+  background: var(--bg-terminal);
+  color: var(--text-term);
   padding: 40px 48px;
+  transition: background 0.2s, color 0.2s;
 }
 
 .logs-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: var(--border-light);
+  border-bottom: var(--border-term);
   padding-bottom: 14px;
   margin-bottom: 16px;
+}
+
+.terminal-title {
+  color: var(--text-term);
 }
 
 .logs-container {
   width: 100%;
   max-height: 400px;
   overflow: auto;
-  border: 1px solid var(--border-logs-inner);
+  border: var(--border-term);
 }
 
 #logs-table {
@@ -28,7 +33,7 @@
 #logs-table td {
   padding: 8px 12px;
   text-align: left;
-  border-bottom: var(--border-light);
+  border-bottom: var(--border-term);
   font: 12px var(--font-mono);
   white-space: nowrap;
 }
@@ -37,11 +42,12 @@
   font-family: var(--font-main);
   font-weight: 700;
   text-transform: uppercase;
-  background: var(--bg-right);
+  background: var(--bg-terminal);
+  color: var(--text-term);
   position: sticky;
   top: 0;
   z-index: 2;
-  border-bottom: 2px solid var(--border-logs-sticky);
+  border-bottom: var(--border-term-sticky);
 }
 
 .lvl-error {
@@ -54,6 +60,7 @@
   font-weight: 700;
 }
 
+.lvl-succ,
 .lvl-success {
   color: var(--lvl-succ);
   font-weight: 700;
@@ -73,19 +80,23 @@
   color: var(--accent);
 }
 
+[data-theme="dark"] .logs-meta {
+  color: #047857;
+}
+
 /* Footer */
 .dashboard-footer {
-  background: var(--bg-footer);
-  color: var(--text-muted-dark);
+  background: var(--bg-terminal);
+  color: var(--text-muted-term);
   text-align: center;
-  padding: 24px;
+  padding: 32px 24px 48px;
   font: 700 11px var(--font-mono);
   text-transform: uppercase;
-  border-top: var(--border-light);
+  border-top: var(--border-term);
 }
 
 .dashboard-footer a {
-  color: var(--accent);
+  color: var(--c-accent);
   text-decoration: none;
   transition: opacity .2s;
 }
@@ -105,7 +116,7 @@
 
   .panel-left {
     border-right: 0;
-    border-bottom: var(--border-dark);
+    border-bottom: var(--border-main);
     padding: 0 0 20px;
   }
 

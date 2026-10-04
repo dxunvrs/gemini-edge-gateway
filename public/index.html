@@ -5,6 +5,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gemini Edge Gateway</title>
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem("gateway_theme");
+      const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const theme = savedTheme || (systemDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
   <link rel="stylesheet" href="/assets/style.css">
 </head>
 
@@ -14,6 +22,9 @@
     <div class="brand-title">GEMINI EDGE GATEWAY</div>
     <button id="refresh-btn">REFRESH</button>
     <span id="gateway-status" class="status-indicator">CONNECTING</span>
+    <div id="theme-toggle-box" class="theme-toggle-box" title="TOGGLE THEME">
+      <div class="theme-toggle-coin"></div>
+    </div>
     <a href="https://github.com/sergeypugin/gemini-edge-gateway" target="_blank" rel="noopener noreferrer"
       class="nav-btn-link">GitHub Repo</a>
   </header>
@@ -29,6 +40,7 @@
             <div><span class="muted">SUCCESS RATE (SUCCESS / TOTAL):</span> <span id="success-rate">—</span></div>
             <div><span class="muted">LAST RESPONSE:</span> <span id="last-resp">—</span></div>
             <div><span class="muted">LAST DISCOVERY RUN:</span> <span id="last-disc">—</span></div>
+            <div><span class="muted">TIME TO RPD RESET:</span> <span id="rpd-reset-countdown">—</span></div>
           </div>
         </div>
 
@@ -62,7 +74,7 @@
       <div class="panel panel-right">
         <div class="panel-section no-border-bottom">
           <h2 class="sub-title"><span class="section-num">04</span> KEY VALIDATION MATRIX</h2>
-          <div class="keys-grid" id="keys-status-container"></div>
+          <div class="keys-grid custom-scroll" id="keys-status-container"></div>
         </div>
       </div>
     </section>

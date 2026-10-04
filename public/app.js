@@ -224,4 +224,25 @@ logsContainer.addEventListener("scroll", () => {
   }
 });
 
+// Theme Logic
+const themeToggle = document.getElementById("theme-toggle-box");
+const root = document.documentElement;
+
+function initTheme() {
+  const savedTheme = localStorage.getItem("gateway_theme");
+  const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = savedTheme || (systemDark ? "dark" : "light");
+  root.setAttribute("data-theme", theme);
+  document.body.setAttribute("data-theme", theme);
+}
+
+themeToggle.onclick = () => {
+  const currentTheme = root.getAttribute("data-theme") || "light";
+  const newTheme = currentTheme === "light" ? "dark" : "light";
+  root.setAttribute("data-theme", newTheme);
+  document.body.setAttribute("data-theme", newTheme);
+  localStorage.setItem("gateway_theme", newTheme);
+};
+
+initTheme();
 loadDashboard();

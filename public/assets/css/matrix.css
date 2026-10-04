@@ -1,49 +1,51 @@
 .matrix-section {
   padding: 40px 48px;
-  border-bottom: var(--border-dark);
-  background-color: var(--bg-left);
+  border-bottom: var(--border-main);
+  background-color: var(--bg-side);
   background-image:
-    radial-gradient(var(--bg-right) 15%, transparent 16%),
-    radial-gradient(var(--bg-right) 15%, transparent 16%);
+    radial-gradient(var(--matrix-dot) 15%, transparent 16%),
+    radial-gradient(var(--matrix-dot) 15%, transparent 16%);
   background-size: 8px 8px;
   background-position: 0 0, 4px 4px;
 }
 
 .matrix-header .sub-title {
   font-size: 18px;
-  background: var(--bg-left);
+  background: var(--bg-side);
   display: inline-block;
   padding: 4px 10px;
-  border: var(--border-dark);
+  border: var(--border-main);
   margin-bottom: 16px;
+  color: var(--text-main);
 }
 
 .scrollable-table-box {
   width: 100%;
   overflow-x: auto;
-  border: var(--border-dark);
-  background: var(--bg-matrix-cell);
-  box-shadow: var(--shadow-matrix);
+  border: var(--border-main);
+  background: var(--bg-main);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   margin-bottom: 24px;
 }
 
 .matrix-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bg-matrix-table);
-  border: var(--border-dark);
+  background: var(--bg-main);
+  border: var(--border-main);
 }
 
 .matrix-table th,
 .matrix-table td {
-  border: var(--border-dark);
+  border: var(--border-main);
   text-align: center;
   font-size: 12px;
 }
 
 .matrix-table th.model-col-header,
 .matrix-table th.key-col-header {
-  background: var(--bg-left);
+  background: var(--bg-side);
+  color: var(--text-main);
   font: 700 11px var(--font-mono);
   text-transform: uppercase;
   padding: 10px 8px;
@@ -57,7 +59,8 @@
 
 .matrix-table td.model-name-cell {
   text-align: left;
-  background: var(--bg-model-cell);
+  background: var(--bg-side);
+  color: var(--text-main);
   width: 220px;
   min-width: 220px;
   padding: 8px 14px;
@@ -68,7 +71,7 @@
   padding: 0;
   min-width: 58px;
   height: 36px;
-  background: var(--bg-matrix-cell);
+  background: var(--bg-main);
 }
 
 .status-badge {
@@ -82,7 +85,7 @@
   white-space: nowrap;
 }
 
-/* Pastel status badge mappings */
+/* Status badge color mappings */
 .status-200 {
   background: var(--st-200-bg);
   color: var(--st-200-text);
@@ -134,15 +137,17 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--bg-left);
+  background: var(--bg-side);
   padding: 12px 16px;
-  border: var(--border-dark);
+  border: var(--border-main);
+  color: var(--text-main);
 }
 
 .legend-title {
   font-weight: 700;
   font-size: 12px;
   text-transform: uppercase;
+  color: var(--text-main);
 }
 
 .legend-items {
@@ -157,6 +162,7 @@
   gap: 8px;
   font-size: 11px;
   font-weight: 600;
+  color: var(--text-main);
 }
 
 .legend-item .status-badge {
