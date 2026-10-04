@@ -1,6 +1,7 @@
 # Gemini Edge Gateway
 
 [![GitHub CI](https://img.shields.io/badge/CI-passing-2ea44f?style=flat-square&logo=githubactions&logoColor=white)](https://github.com/sergeypugin/gemini-edge-gateway/actions)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Dashboard-a1ffcb?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik02IDE2LjMyNkE3IDcgMCAxIDEgMTUuNzEgOGgxLjc5YTQuNSA0LjUgMCAwIDEgLjUgOC45NzMiLz48cGF0aCBkPSJtMTMgMTItMyA1aDRsLTEgNSIvPjwvc3ZnPg==&labelColor=191919)](https://gemini-edge-gateway.sergey-pugin080107.workers.dev/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Cloudflare D1](https://img.shields.io/badge/Storage-D1_SQLite-0051c3?style=flat-square&logo=sqlite&logoColor=white)](https://developers.cloudflare.com/d1/)
 [![Zed IDE](https://img.shields.io/badge/Zed-Compatible-000000?style=flat-square&logo=zedindustries&logoColor=white)](https://zed.dev)
@@ -20,7 +21,7 @@
 
 И вот тут уже пора возвращаться к этому проекту. Данный репозиторий представляет собой интеллектуальный отказоустойчивый **Edge-шлюз** на базе **Cloudflare Workers** и **SQLite D1**. Он позволяет использовать ваши бесплатные тарифы Google AI Studio в полной мере и превращает их в самовосстанавливающийся источник для встроенного агента Zed IDE, который может автономно писать код, читать файлы, выполнять команды в терминале и работать с git.
 
-Визуальный стиль веб-дашборда мониторинга вдохновлен проектом [Aspen Search](https://www.aspensearch.com/). На главной странице развернутого воркера (`https://gemini-edge-gateway.your-name-in-cloudflare.workers.dev/`) отображается полноценный веб-интерфейс: матрица валидации ключей, сводный статус по каждой модели (последний полученный статус ответа вроде 200, RPD, RPM, TPM, 503 и пр. для каждой пары модель-ключ), списки активных моделей и лента логов выполнения в реальном времени.
+Визуальный стиль веб-дашборда мониторинга вдохновлен проектом [Aspen Search](https://www.aspensearch.com/). На главной странице развернутого воркера ([https://gemini-edge-gateway.sergey-pugin080107.workers.dev/](https://gemini-edge-gateway.sergey-pugin080107.workers.dev/)) отображается полноценный веб-интерфейс: матрица валидации ключей, сводный статус по каждой модели (последний полученный статус ответа вроде 200, RPD, RPM, TPM, 503 и пр. для каждой пары модель-ключ), списки активных моделей и лента логов выполнения в реальном времени.
 
 ## Когда этот проект необходим
 
