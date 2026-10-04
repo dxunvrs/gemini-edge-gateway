@@ -112,6 +112,13 @@ function renderOverview(data) {
   }
 }
 
+function formatKeyLabel(id) {
+  if (!id) return "KEY";
+  let s = id.trim();
+  s = s.replace(/^GEMINI[-_]/i, "").trim();
+  return s;
+}
+
 function renderKeys(keys) {
   const container = document.getElementById("keys-status-container");
   if (!keys.length) {
@@ -131,7 +138,7 @@ function renderKeys(keys) {
       statusText = `INVALID (HTTP ${k.status})`;
     }
 
-    const cleanId = k.id.replace(/^GEMINI_KEYS?\s*#?/i, "KEY #").trim().replace(/#\s*#/, "#");
+    const cleanId = formatKeyLabel(k.id);
     return `<div class="key-row"><span>${cleanId}</span><span class="${statusClass}">${statusText}</span></div>`;
   }).join("");
 }
@@ -194,7 +201,7 @@ function renderMatrix(matrix, logs = []) {
 
   const keys = Object.keys(matrix[models[0]] || {});
   thead.innerHTML = `<tr><th class="model-col-header">MODEL \\ KEY</th>${keys.map(k => {
-    const compactKey = k.replace(/^gemini[-_]/i, "").trim();
+    const compactKey = formatKeyLabel(k);
     return `<th class="key-col-header" title="${k}">${compactKey}</th>`;
   }).join("")}</tr>`;
 
