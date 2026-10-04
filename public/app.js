@@ -73,8 +73,22 @@ async function loadDashboard() {
   }
 }
 
+function updateRpdCountdown() {
+  const now = new Date();
+  const nextMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+  const diffMs = Math.max(0, nextMidnight.getTime() - now.getTime());
+  const totalMins = Math.floor(diffMs / (1000 * 60));
+  const hrs = String(Math.floor(totalMins / 60)).padStart(2, "0");
+  const mins = String(totalMins % 60).padStart(2, "0");
+  const el = document.getElementById("rpd-reset-countdown");
+  if (el) el.textContent = `${hrs}:${mins} (00:00 UTC)`;
+}
+
+setInterval(updateRpdCountdown, 30000);
+
 function renderOverview(data) {
   document.getElementById("success-rate").textContent = data.successRate || "100% (0/0)";
+  updateRpdCountdown();
 
   const r = data.lastResponse;
   if (r) {
@@ -148,7 +162,7 @@ function renderMatrix(matrix, logs = []) {
 
   const keys = Object.keys(matrix[models[0]] || {});
   thead.innerHTML = `<tr><th class="model-col-header">MODEL \\ KEY</th>${keys.map(k => {
-    const compactKey = k.replace(/^GEMINI_KEYS?\s*#?/i, "KEY #").trim().replace(/#\s*#/, "#");
+    const compactKey = k.replace(/^gemini[-_]/i, "").trim();
     return `<th class="key-col-header" title="${k}">${compactKey}</th>`;
   }).join("")}</tr>`;
 
