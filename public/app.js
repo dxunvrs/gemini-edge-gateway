@@ -220,11 +220,19 @@ function renderMatrix(matrix, logs = []) {
     const cells = keys.map(k => {
       const item = matrix[m][k] || { hits: 0, status: "-" };
       let statusText = item.status;
-      if (deadModelStatus && (statusText === "-" || !statusText)) {
+
+      // If the model is dead (404 or limit: 0), it takes precedence at the intersection
+      if (deadModelStatus && (statusText === "-" || !statusText || statusText === "KEY_ERR")) {
         statusText = deadModelStatus;
-      } else if (!statusText || statusText === "-") {
-        const found = logs.find(l => l.model === m && l.key === k);
-        statusText = found ? parseStatusFromLog(found) : (item.hits > 0 ? "200" : "-");
+      } else {
+        // If the key is dead (401/403/KEY_ERR), the entire column across active models is banned
+        const keyDeadLog = logs.find(l => l.key === k && parseStatusFromLog(l) === "KEY_ERR");
+        if (keyDeadLog || statusText === "KEY_ERR") {
+          statusText = "KEY_ERR";
+        } else if (!statusText || statusText === "-") {
+          const found = logs.find(l => l.model === m && l.key === k);
+          statusText = found ? parseStatusFromLog(found) : (item.hits > 0 ? "200" : "-");
+        }
       }
       const badgeClass = STATUS_MAP[statusText] || (statusText === "-" ? "status-none" : "status-undefined");
       return `<td class="matrix-cell"><span class="status-badge ${badgeClass}">${statusText}</span></td>`;

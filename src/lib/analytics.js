@@ -102,10 +102,18 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
     }
   }
 
-  // Определение моделей, которые не поддерживаются или имеют нулевую квоту (на основе логов)
+  // Определение невалидных ключей (KEY_ERR) и нерабочих моделей (404, limit: 0) по логам
+  const deadKeysFromLogs = new Set();
   const deadModelsFromLogs = {};
   const seenModelsForDeadCheck = new Set();
+
   for (const log of logs) {
+    if (log.key) {
+      const msg = (log.message || "").toUpperCase();
+      if (log.status === 401 || log.status === 403 || msg.includes("AUTH") || msg.includes("INVALID") || msg.includes("KEY_ERR")) {
+        deadKeysFromLogs.add(log.key);
+      }
+    }
     if (log.model && !seenModelsForDeadCheck.has(log.model)) {
       seenModelsForDeadCheck.add(log.model);
       const msg = (log.message || "").toUpperCase();
@@ -125,15 +133,15 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
 
       let status = "-";
       const unlockTime = liveState.pairCooldowns[pairKey];
-      const isDeadKey = liveState.deadKeys.includes(key.id);
+      const isDeadKey = liveState.deadKeys.includes(key.id) || deadKeysFromLogs.has(key.id);
       const isDeadModel = liveState.deadModels.includes(model) || !!deadModelsFromLogs[model];
       const deadReason = (liveState.deadModelsMap && liveState.deadModelsMap[model]) || deadModelsFromLogs[model] || "404";
 
-      if (isDeadKey) {
-        status = "KEY_ERR";
-      } else if (isDeadModel) {
+      if (isDeadModel) {
         const historyStatus = lastStatusMap[pairKey];
         status = (historyStatus === "limit: 0" || historyStatus === "404") ? historyStatus : deadReason;
+      } else if (isDeadKey) {
+        status = "KEY_ERR";
       } else if (unlockTime && unlockTime > now) {
         const historyStatus = lastStatusMap[pairKey];
         status = (historyStatus && historyStatus !== "200") ? historyStatus : "RPD";
@@ -193,12 +201,15 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       rawModels: discoveryData.rawModels,
       smart: discoveryData.smart,
       lite: discoveryData.lite,
-      keysStatus: discoveryData.validatedKeys.map((k) => ({
-        id: k.id,
-        isValid: k.isValid,
-        status: k.status,
-        unchecked: k.unchecked || false,
-      })),
+      keysStatus: discoveryData.validatedKeys.map((k) => {
+        const isDead = liveState.deadKeys.includes(k.id) || deadKeysFromLogs.has(k.id) || !k.isValid;
+        return {
+          id: k.id,
+          isValid: !isDead,
+          status: isDead ? (k.status && k.status !== 200 ? k.status : 400) : k.status,
+          unchecked: k.unchecked || false,
+        };
+      }),
     } : null,
   };
 }

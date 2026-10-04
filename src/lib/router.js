@@ -257,6 +257,15 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             hadAuthError = true;
             deadKeys.add(keyItem.id);
             logWarn(model, keyItem.id, statusCode, `Auth Error (Invalid Key)`, errorData, durationMs, env, ctx);
+            if (env?.DB && ctx?.waitUntil) {
+              ctx.waitUntil(
+                env.DB.prepare(`
+                  INSERT INTO keys_cache (key_id, is_valid, status_code, checked_at)
+                  VALUES (?, 0, ?, ?)
+                  ON CONFLICT(key_id) DO UPDATE SET is_valid=0, status_code=excluded.status_code, checked_at=excluded.checked_at
+                `).bind(keyItem.id, statusCode, Date.now()).run().catch(() => { })
+              );
+            }
             continue;
           }
 
