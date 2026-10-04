@@ -1,4 +1,7 @@
 export function parseConfig(env) {
+  // All config strings (keys, secrets, passwords) are automatically split by comma and trimmed.
+  // This allows providing multiple values in a single environment variable.
+
   // Сбор и нормализация ключей Gemini
   const keys = [];
   for (const [name, val] of Object.entries(env)) {
