@@ -2,7 +2,7 @@ export function parseConfig(env) {
   // Сбор и нормализация ключей Gemini
   const keys = [];
   for (const [name, val] of Object.entries(env)) {
-    if (/^gemini_key/i.test(name) && typeof val === "string") {
+    if (/^gemini[-_]key/i.test(name) && typeof val === "string") {
       const parts = val.split(",").map((k) => k.trim()).filter(Boolean);
       parts.forEach((k, idx) => {
         // Проверяем только отсутствие внутренних пробелов
@@ -20,8 +20,8 @@ export function parseConfig(env) {
   // Сбор пользователей (auth_secret*)
   const authorizedUsers = [];
   for (const [name, val] of Object.entries(env)) {
-    if (/^auth_secret/i.test(name) && typeof val === "string") {
-      const userTag = name.replace(/^auth_secrets?_?/i, "") || "OWNER";
+    if (/^auth[-_]secret/i.test(name) && typeof val === "string") {
+      const userTag = name.replace(/^auth[-_]secrets?[-_]?/i, "") || "OWNER";
       const secrets = val.split(",").map((s) => s.trim()).filter(Boolean);
       secrets.forEach((secret) => {
         authorizedUsers.push({
@@ -35,7 +35,7 @@ export function parseConfig(env) {
   // Сбор паролей дашборда (dashboard_password*)
   const dashboardPasswords = [];
   for (const [name, val] of Object.entries(env)) {
-    if (/^dashboard_password/i.test(name) && typeof val === "string") {
+    if (/^dashboard[-_]password/i.test(name) && typeof val === "string") {
       const passes = val.split(",").map((p) => p.trim()).filter(Boolean);
       dashboardPasswords.push(...passes);
     }
