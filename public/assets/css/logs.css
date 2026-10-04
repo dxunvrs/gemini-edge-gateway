@@ -77,11 +77,11 @@
 
 .logs-meta {
   font: 700 12px var(--font-mono);
-  color: var(--accent);
+  color: #ffffff;
 }
 
 [data-theme="dark"] .logs-meta {
-  color: #047857;
+  color: #ffffff;
 }
 
 /* Footer */

@@ -18,7 +18,8 @@
 
 <body>
   <header class="top-nav">
-    <a href="https://github.com/sergeypugin" target="_blank" rel="noopener noreferrer" class="logo-box">SP</a>
+    <a href="https://github.com/sergeypugin" target="_blank" rel="noopener noreferrer"
+      class="logo-box"><span>SP</span></a>
     <div class="brand-title">GEMINI EDGE GATEWAY</div>
     <button id="refresh-btn">REFRESH</button>
     <span id="gateway-status" class="status-indicator">CONNECTING</span>
@@ -26,13 +27,11 @@
       <div class="theme-toggle-coin"></div>
     </div>
     <a href="https://github.com/sergeypugin/gemini-edge-gateway" target="_blank" rel="noopener noreferrer"
-      class="nav-btn-link">GitHub Repo</a>
+      class="nav-btn-link"><span>GitHub Repo</span></a>
   </header>
 
   <main class="dashboard-main">
-    <!-- Верхний блок: System Overview + Списки моделей слева, Валидация ключей справа -->
     <section class="top-grid">
-      <!-- Левая колонка: System Overview (сверху) и Списки моделей 01-03 (снизу) -->
       <div class="panel panel-left">
         <div class="panel-section">
           <h1 class="hero-text">SYSTEM<br>OVERVIEW</h1>
@@ -51,18 +50,21 @@
               quotas</span>
           </div>
           <div class="models-trio">
-            <div class="model-col-box">
-              <h3 class="list-title"><span class="section-num">01</span> SMART CASCADE</h3>
+            <div class="model-col-box" id="smart-cascade">
+              <h3 class="list-title"><span class="section-num">01</span> <a href="#smart-cascade"
+                  class="section-title-link">SMART CASCADE</a></h3>
               <div class="regex-tag">/gemini/i &amp;&amp; !lite</div>
               <ul id="smart-list" class="raw-list custom-scroll"></ul>
             </div>
-            <div class="model-col-box">
-              <h3 class="list-title"><span class="section-num">02</span> LITE CASCADE</h3>
+            <div class="model-col-box" id="lite-cascade">
+              <h3 class="list-title"><span class="section-num">02</span> <a href="#lite-cascade"
+                  class="section-title-link">LITE CASCADE</a></h3>
               <div class="regex-tag">/gemini/i &amp;&amp; lite</div>
               <ul id="lite-list" class="raw-list custom-scroll"></ul>
             </div>
-            <div class="model-col-box">
-              <h3 class="list-title"><span class="section-num">03</span> ALL GOOGLE MODELS</h3>
+            <div class="model-col-box" id="all-google-models">
+              <h3 class="list-title"><span class="section-num">03</span> <a href="#all-google-models"
+                  class="section-title-link">ALL GOOGLE MODELS</a></h3>
               <div class="regex-tag">GET /v1beta/models</div>
               <ul id="raw-list" class="raw-list custom-scroll"></ul>
             </div>
@@ -70,19 +72,19 @@
         </div>
       </div>
 
-      <!-- Правая колонка: Валидация ключей (04) -->
-      <div class="panel panel-right">
-        <div class="panel-section no-border-bottom">
-          <h2 class="sub-title"><span class="section-num">04</span> KEY VALIDATION MATRIX</h2>
+      <div class="panel panel-right" id="key-validation-matrix">
+        <div class="panel-section no-border-bottom panel-keys-section">
+          <h2 class="sub-title"><span class="section-num">04</span> <a href="#key-validation-matrix"
+              class="section-title-link">KEY VALIDATION MATRIX</a></h2>
           <div class="keys-grid custom-scroll" id="keys-status-container"></div>
         </div>
       </div>
     </section>
 
-    <!-- Средний блок: Большая матрица статусов и распределения -->
-    <section class="matrix-section">
+    <section class="matrix-section" id="status-traffic-distribution-matrix">
       <div class="matrix-header">
-        <h2 class="sub-title"><span class="section-num">05</span> STATUS &amp; TRAFFIC DISTRIBUTION MATRIX</h2>
+        <h2 class="sub-title"><span class="section-num">05</span> <a href="#status-traffic-distribution-matrix"
+            class="section-title-link">STATUS &amp; TRAFFIC DISTRIBUTION MATRIX</a></h2>
       </div>
       <div class="scrollable-table-box custom-scroll">
         <table id="matrix-table" class="matrix-table">
@@ -95,7 +97,6 @@
         </table>
       </div>
 
-      <!-- Легенда матрицы -->
       <div class="matrix-legend-container">
         <div class="legend-title">STATUS LEGEND:</div>
         <div class="legend-items">
@@ -143,10 +144,10 @@
       </div>
     </section>
 
-    <!-- Нижний блок: Таблица логов выполнения -->
-    <section class="logs-section">
+    <section class="logs-section" id="execution-logs">
       <div class="logs-header">
-        <h2 class="sub-title terminal-title"><span class="section-num-dark">06</span> EXECUTION LOGS</h2>
+        <h2 class="sub-title terminal-title"><span class="section-num-dark">06</span> <a href="#execution-logs"
+            class="section-title-link">EXECUTION LOGS</a></h2>
         <span id="logs-counter" class="logs-meta">0 ENTRIES</span>
       </div>
 

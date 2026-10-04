@@ -130,8 +130,31 @@ function renderKeys(keys) {
       statusText = `INVALID (HTTP ${k.status})`;
     }
 
-    return `<div class="key-row"><span>${k.id}</span><span class="${statusClass}">${statusText}</span></div>`;
+    const cleanId = k.id.replace(/^GEMINI_KEYS?\s*#?/i, "KEY #").trim().replace(/#\s*#/, "#");
+    return `<div class="key-row"><span>${cleanId}</span><span class="${statusClass}">${statusText}</span></div>`;
   }).join("");
+}
+
+function alignLayout() {
+  const smart = document.getElementById("smart-list");
+  const lite = document.getElementById("lite-list");
+  const raw = document.getElementById("raw-list");
+  if (smart && smart.clientHeight > 0) {
+    const h = smart.clientHeight;
+    if (lite) lite.style.maxHeight = `${h}px`;
+    if (raw) raw.style.maxHeight = `${h}px`;
+  }
+
+  const leftPanel = document.querySelector(".panel-left");
+  const keysContainer = document.getElementById("keys-status-container");
+  if (leftPanel && keysContainer) {
+    const totalLeftH = leftPanel.clientHeight;
+    const h2 = document.querySelector(".panel-right .sub-title");
+    const titleH = h2 ? (h2.offsetHeight + 16) : 36;
+    const targetH = Math.max(120, totalLeftH - titleH);
+    keysContainer.style.height = `${targetH}px`;
+    keysContainer.style.maxHeight = `${targetH}px`;
+  }
 }
 
 function parseStatusFromLog(found) {
@@ -190,6 +213,7 @@ function renderModels(disc) {
   renderList("smart-list", disc?.smart);
   renderList("lite-list", disc?.lite);
   renderList("raw-list", disc?.rawModels);
+  setTimeout(alignLayout, 50);
 }
 
 function renderNextLogsChunk() {
@@ -246,3 +270,4 @@ themeToggle.onclick = () => {
 
 initTheme();
 loadDashboard();
+window.addEventListener("resize", alignLayout);

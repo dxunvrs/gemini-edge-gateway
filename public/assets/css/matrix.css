@@ -23,7 +23,7 @@
   width: 100%;
   overflow-x: auto;
   border: var(--border-main);
-  background: var(--bg-main);
+  background: var(--bg-matrix-table);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   margin-bottom: 24px;
 }
@@ -31,7 +31,7 @@
 .matrix-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bg-main);
+  background: var(--bg-matrix-table);
   border: var(--border-main);
 }
 
@@ -59,7 +59,7 @@
 
 .matrix-table td.model-name-cell {
   text-align: left;
-  background: var(--bg-side);
+  background: var(--bg-model-cell);
   color: var(--text-main);
   width: 220px;
   min-width: 220px;
@@ -71,7 +71,7 @@
   padding: 0;
   min-width: 58px;
   height: 36px;
-  background: var(--bg-main);
+  background: var(--bg-matrix-cell);
 }
 
 .status-badge {
