@@ -1,6 +1,6 @@
 import { createGeminiStreamPipeline } from "./stream.js";
 import { recordSuccess } from "./analytics.js";
-import { logSuccess, logWarn, logError } from "./logger.js";
+import { logSuccess, logWarn, logError, getPersistentLogs } from "./logger.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
@@ -14,9 +14,33 @@ const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 const modelCooldowns = {};
 const pairCooldowns = {};
 const deadKeys = new Set();
-const deadModels = new Set();
+const deadModels = new Map();
 
 const lastRpdUnblock = {};
+let deadInitialized = false;
+
+async function ensureDeadState(env) {
+  if (deadInitialized) return;
+  deadInitialized = true;
+  try {
+    const recentLogs = await getPersistentLogs(env);
+    for (const log of recentLogs) {
+      const msg = (log.message || "").toUpperCase();
+      if (log.model) {
+        if (log.status === 404 || msg.includes("404") || msg.includes("NOT_FOUND")) {
+          deadModels.set(log.model, "404");
+        } else if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) {
+          deadModels.set(log.model, "limit: 0");
+        }
+      }
+      if (log.key && (log.status === 401 || log.status === 403 || msg.includes("AUTH") || msg.includes("INVALID"))) {
+        deadKeys.add(log.key);
+      }
+    }
+  } catch (err) {
+    console.error("ensureDeadState error:", err);
+  }
+}
 
 function getNextMidnightUtc() {
   const d = new Date();
@@ -146,11 +170,14 @@ export function getRouterLiveState() {
     modelCooldowns,
     pairCooldowns,
     deadKeys: Array.from(deadKeys),
-    deadModels: Array.from(deadModels)
+    deadModels: Array.from(deadModels.keys()),
+    deadModelsMap: Object.fromEntries(deadModels)
   };
 }
 
 export async function executeStratifiedRouting(request, rawText, currentUser, cascades, activeKeys, env = null, ctx = null) {
+  await ensureDeadState(env);
+
   // Очистка устаревших блокировок в памяти
   const nowMs = Date.now();
   for (const k of Object.keys(pairCooldowns)) {
@@ -215,13 +242,13 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           const errInfo = classifyGoogleError(statusCode, errorObj);
           if (errInfo.type === "NOT_FOUND") {
-            deadModels.add(model);
+            deadModels.set(model, "404");
             logWarn(model, keyItem.id, statusCode, `Model Deprecated/Not Found (404)`, errorData, durationMs, env, ctx);
             break;
           }
 
           if (errInfo.type === "ZERO_QUOTA") {
-            deadModels.add(model);
+            deadModels.set(model, "limit: 0");
             logWarn(model, keyItem.id, statusCode, `Zero Free Quota (limit: 0)`, errorData, durationMs, env, ctx);
             break;
           }

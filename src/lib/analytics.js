@@ -102,6 +102,21 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
     }
   }
 
+  // Определение моделей, которые не поддерживаются или имеют нулевую квоту (на основе логов)
+  const deadModelsFromLogs = {};
+  const seenModelsForDeadCheck = new Set();
+  for (const log of logs) {
+    if (log.model && !seenModelsForDeadCheck.has(log.model)) {
+      seenModelsForDeadCheck.add(log.model);
+      const msg = (log.message || "").toUpperCase();
+      if (log.status === 404 || msg.includes("404")) {
+        deadModelsFromLogs[log.model] = "404";
+      } else if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) {
+        deadModelsFromLogs[log.model] = "limit: 0";
+      }
+    }
+  }
+
   for (const model of uniqueModels) {
     formattedMatrix[model] = {};
     for (const key of allKeys) {
@@ -111,18 +126,19 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       let status = "-";
       const unlockTime = liveState.pairCooldowns[pairKey];
       const isDeadKey = liveState.deadKeys.includes(key.id);
-      const isDeadModel = liveState.deadModels.includes(model);
+      const isDeadModel = liveState.deadModels.includes(model) || !!deadModelsFromLogs[model];
+      const deadReason = (liveState.deadModelsMap && liveState.deadModelsMap[model]) || deadModelsFromLogs[model] || "404";
 
       if (isDeadKey) {
         status = "KEY_ERR";
+      } else if (isDeadModel) {
+        const historyStatus = lastStatusMap[pairKey];
+        status = (historyStatus === "limit: 0" || historyStatus === "404") ? historyStatus : deadReason;
       } else if (unlockTime && unlockTime > now) {
         const historyStatus = lastStatusMap[pairKey];
         status = (historyStatus && historyStatus !== "200") ? historyStatus : "RPD";
       } else if (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) {
         status = "503";
-      } else if (isDeadModel) {
-        const historyStatus = lastStatusMap[pairKey];
-        status = (historyStatus === "limit: 0" || historyStatus === "404") ? historyStatus : "404";
       } else {
         status = lastStatusMap[pairKey] || "-";
       }

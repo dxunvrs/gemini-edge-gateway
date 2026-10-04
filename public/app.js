@@ -206,10 +206,23 @@ function renderMatrix(matrix, logs = []) {
   }).join("")}</tr>`;
 
   tbody.innerHTML = models.map(m => {
+    // If the model is dead (404 or limit: 0), the entire row across all keys is banned
+    let deadModelStatus = null;
+    const modelDeadLog = logs.find(l => {
+      if (l.model !== m) return false;
+      const parsed = parseStatusFromLog(l);
+      return parsed === "404" || parsed === "limit: 0";
+    });
+    if (modelDeadLog) {
+      deadModelStatus = parseStatusFromLog(modelDeadLog);
+    }
+
     const cells = keys.map(k => {
       const item = matrix[m][k] || { hits: 0, status: "-" };
       let statusText = item.status;
-      if (!statusText || statusText === "-") {
+      if (deadModelStatus && (statusText === "-" || !statusText)) {
+        statusText = deadModelStatus;
+      } else if (!statusText || statusText === "-") {
         const found = logs.find(l => l.model === m && l.key === k);
         statusText = found ? parseStatusFromLog(found) : (item.hits > 0 ? "200" : "-");
       }

@@ -64,9 +64,9 @@ flowchart TD
         AB -->|200 OK| AD["Пайплайн SSE-стриминга в Zed"]
         AB -->|Код ошибки| AE["classifyGoogleError"]
 
-        AE -->|404 NOT_FOUND| AF["deadModels.add -> break к следующей модели"]
-        AE -->|limit: 0 ZERO_QUOTA| AG["deadModels.add -> break к следующей модели"]
-        AE -->|400 / 401 / 403 AUTH| AH["deadKeys.add -> continue к следующему ключу"]
+        AE -->|404 NOT_FOUND| AF["deadModels.set(model, 404) -> бан всей строки модели -> break к следующей модели"]
+        AE -->|limit: 0 ZERO_QUOTA| AG["deadModels.set(model, limit: 0) -> бан всей строки модели -> break к следующей модели"]
+        AE -->|400 / 401 / 403 AUTH| AH["deadKeys.add -> бан ключа -> continue к следующему ключу"]
         AE -->|503 UNAVAILABLE| AI["modelCooldowns = now + 60s -> break к следующей модели"]
         AE -->|429 RPD| AJ["pairCooldowns = 00:00 UTC -> continue к следующему ключу"]
         AE -->|429 RPM| AK["pairCooldowns = now + retryDelay -> continue к следующему ключу"]
