@@ -258,12 +258,14 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             const nowMs = now.getTime();
 
             // Если получили RPD в первую минуту новых суток (00:00 -- 00:01 UTC)
-            // ставим таймаут на 1 час для защиты от рассинхрона
+            // ставим таймаут до 01:01 UTC для защиты от рассинхрона серверов Google
             const isFirstMinuteOfDay = now.getUTCHours() === 0 && now.getUTCMinutes() === 0;
             let unlockTime = getNextMidnightUtc();
 
             if (isFirstMinuteOfDay) {
-              unlockTime = nowMs + ONE_HOUR_MS;
+              const resetTarget = new Date(now);
+              resetTarget.setUTCHours(1, 1, 0, 0);
+              unlockTime = resetTarget.getTime();
             } else {
               const lastUnblock = lastRpdUnblock[pairKey] || 0;
               if (lastUnblock > 0 && Math.abs(nowMs - lastUnblock) < ONE_HOUR_MS) {
@@ -346,8 +348,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     advice = "все предоставленные ключи GEMINI_KEY отклонены Google API (ошибка 401/403). Проверьте актуальность ключей в переменных Cloudflare.";
     errorReason = "Auth Error (401/403 Invalid Key)";
   } else {
-    advice = `Неизвестная ошибка`;
-    errorReason = `UNDEFINED`;
+    advice = "произошла неизвестная ошибка API. Если вы используете VPN, попробуйте сменить страну/локацию в приложении VPN -- это переключит вас на другой датацентр Cloudflare с чистым пулом IP-адресов.";
+    errorReason = "UNDEFINED";
   }
 
   logError(errorReason, 429, attemptsCount, env, ctx);
