@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS stats_kv (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS matrix_state (
+  model TEXT,
+  key_id TEXT,
+  status TEXT,
+  updated_at INTEGER,
+  PRIMARY KEY (model, key_id)
+);
+
 CREATE TRIGGER IF NOT EXISTS prune_old_logs_trigger
 AFTER INSERT ON logs
 WHEN (NEW.id % 100 = 0 AND NEW.id > 5000)

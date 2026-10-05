@@ -1,15 +1,19 @@
 import { createGeminiStreamPipeline } from "./stream.js";
 import { recordSuccess } from "./analytics.js";
 import { logSuccess, logWarn, logError, getPersistentLogs } from "./logger.js";
+import {
+  ONE_HOUR_MS,
+  COOLDOWN_503_MS,
+  DEFAULT_RPM_DELAY_MS,
+  getTodayMidnightUtc,
+  getNextMidnightUtc,
+  parseRetryDelayMs,
+  classifyGoogleError
+} from "./utils.js";
 
 const DEFAULT_GOOGLE_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const MAX_SUBREQUESTS = 40;
-
-const COOLDOWN_503_MS = 60 * 1000;
-const DEFAULT_RPM_DELAY_MS = 60 * 1000;
 const ATTEMPT_TIMEOUT_MS = 60 * 1000;
-const ONE_HOUR_MS = 60 * 60 * 1000; // 1 час для защиты от рассинхрона
-const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 
 const modelCooldowns = {};
 const pairCooldowns = {};
@@ -19,87 +23,56 @@ const deadModels = new Map();
 const lastRpdUnblock = {};
 let deadInitialized = false;
 
+export function saveMatrixStatus(model, keyId, status, env, ctx) {
+  if (!env?.DB || !model || !keyId) return;
+  const now = Date.now();
+  const run = () => env.DB.prepare(`
+    INSERT INTO matrix_state (model, key_id, status, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(model, key_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
+  `).bind(model, keyId, status, now).run().catch((err) => {
+    console.error("saveMatrixStatus error:", err);
+  });
+
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(run());
+  } else {
+    run();
+  }
+}
+
 async function ensureDeadState(env) {
   if (deadInitialized) return;
   deadInitialized = true;
+  if (!env?.DB) return;
+
   try {
-    const recentLogs = await getPersistentLogs(env);
-    for (const log of recentLogs) {
-      const msg = (log.message || "").toUpperCase();
-      if (log.model) {
-        if (log.status === 404 || msg.includes("404") || msg.includes("NOT_FOUND")) {
-          deadModels.set(log.model, "404");
-        } else if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) {
-          deadModels.set(log.model, "limit: 0");
+    const todayMidnight = getTodayMidnightUtc();
+    const { results } = await env.DB.prepare(`
+      SELECT model, key_id, status, updated_at FROM matrix_state
+    `).all();
+
+    if (results && results.length > 0) {
+      for (const row of results) {
+        const { model, key_id, status, updated_at } = row;
+        if (status === "404") {
+          deadModels.set(model, "404");
+        } else if (status === "limit: 0") {
+          deadModels.set(model, "limit: 0");
+        } else if (status === "KEY_ERR") {
+          deadKeys.add(key_id);
+        } else if (status === "RPD") {
+          // Если RPD зафиксирован до сегодняшних 00:00 UTC -- игнорируем (сброшен на новые сутки)
+          if (updated_at >= todayMidnight) {
+            const pairKey = `${model}:${key_id}`;
+            pairCooldowns[pairKey] = getNextMidnightUtc();
+          }
         }
-      }
-      if (log.key && (log.status === 401 || log.status === 403 || msg.includes("AUTH") || msg.includes("INVALID"))) {
-        deadKeys.add(log.key);
       }
     }
   } catch (err) {
     console.error("ensureDeadState error:", err);
   }
-}
-
-function getNextMidnightUtc() {
-  const d = new Date();
-  d.setUTCHours(24, 0, 0, 0);
-  return d.getTime();
-}
-
-function parseRetryDelayMs(retryDelayStr, defaultMs = DEFAULT_RPM_DELAY_MS) {
-  if (!retryDelayStr) return defaultMs;
-  const match = String(retryDelayStr).match(/([\d.]+)\s*s?/i);
-  if (match) {
-    const sec = parseFloat(match[1]);
-    if (sec <= 60) {
-      return Math.ceil(sec) * 1000;
-    }
-  }
-  return defaultMs;
-}
-
-function classifyGoogleError(statusCode, errorObj) {
-  if (statusCode === 404 || errorObj?.status === "NOT_FOUND") {
-    return { type: "NOT_FOUND" };
-  }
-  const message = (errorObj?.message || "").toLowerCase();
-
-  if (message.includes("valid API key")) {
-    return { type: "AUTH" };
-  }
-
-  if (message.includes("limit: 0")) {
-    return { type: "ZERO_QUOTA" };
-  }
-
-  if (statusCode === 503 || statusCode === 500 || errorObj?.status === "UNAVAILABLE") {
-    return { type: "UNAVAILABLE" };
-  }
-
-  const details = errorObj?.details || [];
-  const quotaFailures = details.filter((d) => d["@type"]?.includes("QuotaFailure"));
-  const violations = quotaFailures.flatMap((q) => q.violations || []);
-
-  const quotaIds = violations.map((v) => (v.quotaId || "").toLowerCase()).join(" ");
-  const quotaMetrics = violations.map((v) => (v.quotaMetric || "").toLowerCase()).join(" ");
-
-  if (statusCode === 429 || errorObj?.status === "RESOURCE_EXHAUSTED") {
-    // TPM (tokens per minute)
-    const isTpm = quotaIds.includes("tokenspermodelperminute") || quotaMetrics.includes("input_token_count");
-    if (isTpm) { return { type: "TPM" }; }
-
-    // RPD (requests per day)
-    const isDaily = quotaIds.includes("requestsperday");
-    if (isDaily) { return { type: "RPD" }; }
-
-    // RPM (requests per minute)
-    const isRpm = quotaIds.includes("requestsperminute");
-    if (isRpm) { return { type: "RPM" }; }
-  }
-
-  return { type: "OTHER" };
 }
 
 // Two-Zone Split
@@ -243,12 +216,14 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
           const errInfo = classifyGoogleError(statusCode, errorObj);
           if (errInfo.type === "NOT_FOUND") {
             deadModels.set(model, "404");
+            saveMatrixStatus(model, keyItem.id, "404", env, ctx);
             logWarn(model, keyItem.id, statusCode, `Model Deprecated/Not Found (404)`, errorData, durationMs, env, ctx);
             break;
           }
 
           if (errInfo.type === "ZERO_QUOTA") {
             deadModels.set(model, "limit: 0");
+            saveMatrixStatus(model, keyItem.id, "limit: 0", env, ctx);
             logWarn(model, keyItem.id, statusCode, `Zero Free Quota (limit: 0)`, errorData, durationMs, env, ctx);
             break;
           }
@@ -256,6 +231,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
           if (errInfo.type === "AUTH") {
             hadAuthError = true;
             deadKeys.add(keyItem.id);
+            saveMatrixStatus(model, keyItem.id, "KEY_ERR", env, ctx);
             logWarn(model, keyItem.id, statusCode, `Auth Error (Invalid Key)`, errorData, durationMs, env, ctx);
             if (env?.DB && ctx?.waitUntil) {
               ctx.waitUntil(
@@ -271,28 +247,40 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           if (errInfo.type === "UNAVAILABLE") {
             modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
+            saveMatrixStatus(model, keyItem.id, "503", env, ctx);
             logWarn(model, keyItem.id, statusCode, `Model Overloaded (503)`, errorData, durationMs, env, ctx);
             break;
           }
 
           if (errInfo.type === "RPD") {
             hadRpdError = true;
-            const nowMs = Date.now();
-            const lastUnblock = lastRpdUnblock[pairKey] || 0;
+            const now = new Date();
+            const nowMs = now.getTime();
+
+            // Если получили RPD в первую минуту новых суток (00:00 -- 00:01 UTC)
+            // ставим таймаут на 1 час для защиты от рассинхрона
+            const isFirstMinuteOfDay = now.getUTCHours() === 0 && now.getUTCMinutes() === 0;
             let unlockTime = getNextMidnightUtc();
 
-            if (lastUnblock > 0 && Math.abs(nowMs - lastUnblock) < ONE_HOUR_MS) {
+            if (isFirstMinuteOfDay) {
               unlockTime = nowMs + ONE_HOUR_MS;
+            } else {
+              const lastUnblock = lastRpdUnblock[pairKey] || 0;
+              if (lastUnblock > 0 && Math.abs(nowMs - lastUnblock) < ONE_HOUR_MS) {
+                unlockTime = nowMs + ONE_HOUR_MS;
+              }
             }
 
             pairCooldowns[pairKey] = unlockTime;
             lastRpdUnblock[pairKey] = unlockTime;
+            saveMatrixStatus(model, keyItem.id, "RPD", env, ctx);
             logWarn(model, keyItem.id, statusCode, `RPD Daily Limit`, errorData, durationMs, env, ctx);
             continue;
           }
 
           if (errInfo.type === "TPM") {
             hadTpmError = true;
+            saveMatrixStatus(model, keyItem.id, "TPM", env, ctx);
             logWarn(model, keyItem.id, statusCode, `TPM Token Limit`, errorData, durationMs, env, ctx);
             continue;
           }
@@ -302,6 +290,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             const retryInfo = (errorObj?.details || []).find((d) => d["@type"]?.includes("RetryInfo"));
             const delayMs = parseRetryDelayMs(retryInfo?.retryDelay, DEFAULT_RPM_DELAY_MS);
             pairCooldowns[pairKey] = Date.now() + delayMs;
+            saveMatrixStatus(model, keyItem.id, "RPM", env, ctx);
             logWarn(model, keyItem.id, statusCode, `RPM Minute Limit (${Math.round(delayMs / 1000)}s)`, errorData, durationMs, env, ctx);
             continue;
           }
@@ -312,6 +301,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
         logSuccess(model, keyItem.id, durationMs, env, ctx);
         recordSuccess(model, keyItem.id, currentUser, env, ctx);
+        saveMatrixStatus(model, keyItem.id, "200", env, ctx);
 
         const streamPipeline = createGeminiStreamPipeline();
         response.body.pipeTo(streamPipeline.writable).catch(() => { });

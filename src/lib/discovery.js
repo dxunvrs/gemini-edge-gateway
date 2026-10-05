@@ -1,6 +1,8 @@
+import { DAY_HOURS_MS } from "./utils.js";
+
 let CACHED_DATA = null;
 let LAST_DISCOVERY_TIME = 0;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_MS = DAY_HOURS_MS;
 const MAX_KEYS_PER_BATCH = 40;
 
 export async function getDiscoveryData(keys, env = null, forceBatch = false) {

@@ -1,5 +1,6 @@
 import { getPersistentLogs } from "./logger.js";
 import { getRouterLiveState } from "./router.js";
+import { getTodayMidnightUtc } from "./utils.js";
 
 let matrix = {};
 let lastResponse = null;
@@ -54,75 +55,33 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
   const logs = await getPersistentLogs(env);
   const liveState = getRouterLiveState();
   const now = Date.now();
+  const todayMidnightMs = getTodayMidnightUtc();
+
+  // Загружаем актуальные состояния из matrix_state
+  const dbStates = {};
+  if (env?.DB) {
+    try {
+      const { results } = await env.DB.prepare("SELECT model, key_id, status, updated_at FROM matrix_state").all();
+      for (const row of results) {
+        dbStates[`${row.model}:${row.key_id}`] = row;
+      }
+    } catch (e) {
+      console.error("D1 matrix_state read error:", e);
+    }
+  }
 
   const formattedMatrix = {};
   const allModels = discoveryData ? [...discoveryData.smart, ...discoveryData.lite] : Object.keys(matrix);
   const uniqueModels = [...new Set(allModels)];
 
-  // Определение последнего статуса ответа для каждой пары (модель, ключ) по логам (от свежих к старым)
-  const lastStatusMap = {};
-  for (const log of logs) {
-    if (log.model && log.key) {
-      const pairKey = `${log.model}:${log.key}`;
-      if (!lastStatusMap[pairKey]) {
-        let code = "-";
-        const logTime = new Date(log.timestamp).getTime();
-
-        if (log.status === 200) {
-          code = "200";
-        } else {
-          const msg = (log.message || "").toUpperCase();
-          let type = "UNDEFINED";
-          if (msg.includes("RPD")) type = "RPD";
-          else if (msg.includes("TPM")) type = "TPM";
-          else if (msg.includes("RPM")) type = "RPM";
-          else if (msg.includes("503") || log.status === 503) type = "503";
-          else if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) type = "limit: 0";
-          else if (msg.includes("AUTH") || msg.includes("INVALID") || log.status === 401 || log.status === 403) type = "KEY_ERR";
-          else if (msg.includes("404") || log.status === 404) type = "404";
-          else if (log.status) type = String(log.status);
-
-          if (type === "RPD") {
-            const logDate = new Date(log.timestamp);
-            const midnightUtc = new Date(logDate);
-            midnightUtc.setUTCHours(24, 0, 0, 0);
-            if (now >= midnightUtc.getTime()) {
-              type = "-";
-            }
-          }
-
-          if (["503", "RPM", "TPM"].includes(type) && (now - logTime > 60000)) {
-            type = "-";
-          }
-
-          code = type;
-        }
-        lastStatusMap[pairKey] = code;
-      }
-    }
-  }
-
-  // Определение невалидных ключей (KEY_ERR) и нерабочих моделей (404, limit: 0) по логам
-  const deadKeysFromLogs = new Set();
-  const deadModelsFromLogs = {};
-  const seenModelsForDeadCheck = new Set();
-
-  for (const log of logs) {
-    if (log.key) {
-      const msg = (log.message || "").toUpperCase();
-      if (log.status === 401 || log.status === 403 || msg.includes("AUTH") || msg.includes("INVALID") || msg.includes("KEY_ERR")) {
-        deadKeysFromLogs.add(log.key);
-      }
-    }
-    if (log.model && !seenModelsForDeadCheck.has(log.model)) {
-      seenModelsForDeadCheck.add(log.model);
-      const msg = (log.message || "").toUpperCase();
-      if (log.status === 404 || msg.includes("404")) {
-        deadModelsFromLogs[log.model] = "404";
-      } else if (msg.includes("LIMIT: 0") || msg.includes("ZERO")) {
-        deadModelsFromLogs[log.model] = "limit: 0";
-      }
-    }
+  // Определяем невалидные ключи и модели на основе БД
+  const deadKeysFromDb = new Set();
+  const deadModelsFromDb = {};
+  for (const pairKey in dbStates) {
+    const row = dbStates[pairKey];
+    if (row.status === "KEY_ERR") deadKeysFromDb.add(row.key_id);
+    if (row.status === "404") deadModelsFromDb[row.model] = "404";
+    if (row.status === "limit: 0") deadModelsFromDb[row.model] = "limit: 0";
   }
 
   for (const model of uniqueModels) {
@@ -130,25 +89,31 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
     for (const key of allKeys) {
       const pairKey = `${model}:${key.id}`;
       const hits = (matrix[model] && matrix[model][key.id]) || 0;
+      const dbRow = dbStates[pairKey];
 
       let status = "-";
       const unlockTime = liveState.pairCooldowns[pairKey];
-      const isDeadKey = liveState.deadKeys.includes(key.id) || deadKeysFromLogs.has(key.id);
-      const isDeadModel = liveState.deadModels.includes(model) || !!deadModelsFromLogs[model];
-      const deadReason = (liveState.deadModelsMap && liveState.deadModelsMap[model]) || deadModelsFromLogs[model] || "404";
+      const isDeadKey = liveState.deadKeys.includes(key.id) || deadKeysFromDb.has(key.id);
+      const isDeadModel = liveState.deadModels.includes(model) || !!deadModelsFromDb[model];
+      const deadReason = (liveState.deadModelsMap && liveState.deadModelsMap[model]) || deadModelsFromDb[model] || "404";
 
       if (isDeadModel) {
-        const historyStatus = lastStatusMap[pairKey];
-        status = (historyStatus === "limit: 0" || historyStatus === "404") ? historyStatus : deadReason;
+        status = (dbRow?.status === "limit: 0" || dbRow?.status === "404") ? dbRow.status : deadReason;
       } else if (isDeadKey) {
         status = "KEY_ERR";
       } else if (unlockTime && unlockTime > now) {
-        const historyStatus = lastStatusMap[pairKey];
-        status = (historyStatus && historyStatus !== "200") ? historyStatus : "RPD";
+        status = (dbRow?.status && dbRow.status !== "200") ? dbRow.status : "RPD";
       } else if (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) {
         status = "503";
-      } else {
-        status = lastStatusMap[pairKey] || "-";
+      } else if (dbRow) {
+        // JIT Reset для RPD и временных ошибок
+        if (dbRow.status === "RPD") {
+          status = (dbRow.updated_at >= todayMidnightMs) ? "RPD" : "-";
+        } else if (["503", "RPM", "TPM"].includes(dbRow.status)) {
+          status = (now - dbRow.updated_at < 60000) ? dbRow.status : "-";
+        } else {
+          status = dbRow.status;
+        }
       }
 
       formattedMatrix[model][key.id] = { hits, status };
@@ -202,7 +167,7 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       smart: discoveryData.smart,
       lite: discoveryData.lite,
       keysStatus: discoveryData.validatedKeys.map((k) => {
-        const isDead = liveState.deadKeys.includes(k.id) || deadKeysFromLogs.has(k.id) || !k.isValid;
+        const isDead = liveState.deadKeys.includes(k.id) || deadKeysFromDb.has(k.id) || !k.isValid;
         return {
           id: k.id,
           isValid: !isDead,
