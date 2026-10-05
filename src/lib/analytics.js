@@ -94,6 +94,9 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
 
   for (const model of uniqueModels) {
     formattedMatrix[model] = {};
+    const isModel503 = (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) ||
+      Object.values(dbStates).some(r => r.model === model && r.status === "503" && (now - r.updated_at < 60000));
+
     for (const key of allKeys) {
       const pairKey = `${model}:${key.id}`;
       const hits = (matrix[model] && matrix[model][key.id]) || 0;
@@ -104,20 +107,25 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       const isDeadKey = liveState.deadKeys.includes(key.id) || deadKeysFromDb.has(key.id);
       const isDeadModel = liveState.deadModels.includes(model) || !!deadModelsFromDb[model];
       const deadReason = (liveState.deadModelsMap && liveState.deadModelsMap[model]) || deadModelsFromDb[model] || "404";
+      const isRpdActive = (unlockTime && unlockTime > now) || (dbRow?.status === "RPD" && dbRow.updated_at >= todayMidnightMs);
 
+      // Иерархия приоритетов статусов ячейки:
+      // 1. Мертвая модель (404, limit: 0) -- красит всю строку
+      // 2. Мертвый ключ (KEY_ERR) -- красит всю колонку
+      // 3. Исчерпанный суточный лимит (RPD) -- статус ячейки до 00:00 UTC
+      // 4. Перегрузка модели (503) -- красит всю строку, кроме ячеек с RPD и KEY_ERR
+      // 5. Локальные временные статусы (TIMEOUT, RPM, TPM) -- до 60 секунд
+      // 6. Последний подтвержденный статус (200) или прочерк (-)
       if (isDeadModel) {
         status = (dbRow?.status === "limit: 0" || dbRow?.status === "404") ? dbRow.status : deadReason;
       } else if (isDeadKey) {
         status = "KEY_ERR";
-      } else if (unlockTime && unlockTime > now) {
-        status = (dbRow?.status && dbRow.status !== "200") ? dbRow.status : "RPD";
-      } else if (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) {
+      } else if (isRpdActive) {
+        status = "RPD";
+      } else if (isModel503) {
         status = "503";
       } else if (dbRow) {
-        // JIT Reset для RPD и временных ошибок
-        if (dbRow.status === "RPD") {
-          status = (dbRow.updated_at >= todayMidnightMs) ? "RPD" : "-";
-        } else if (["503", "RPM", "TPM", "TIMEOUT"].includes(dbRow.status)) {
+        if (["503", "RPM", "TPM", "TIMEOUT"].includes(dbRow.status)) {
           status = (now - dbRow.updated_at < 60000) ? dbRow.status : "-";
         } else {
           status = dbRow.status;
