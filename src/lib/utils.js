@@ -1,6 +1,6 @@
 export const ONE_HOUR_MS = 60 * 60 * 1000;
 export const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
-export const COOLDOWN_503_MS = 60 * 1000;
+export const COOLDOWN_503_MS = 10 * 1000;
 export const DEFAULT_RPM_DELAY_MS = 60 * 1000;
 
 export function getTodayMidnightUtc() {
