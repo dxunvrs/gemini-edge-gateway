@@ -295,6 +295,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
             continue;
           }
 
+          const fallbackStatus = statusCode ? String(statusCode) : "UNDEFINED";
+          saveMatrixStatus(model, keyItem.id, fallbackStatus, env, ctx);
           logWarn(model, keyItem.id, statusCode, `API Error`, errorData, durationMs, env, ctx);
           continue;
         }
@@ -317,12 +319,13 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
       } catch (err) {
         const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
-        if (isTimeout) {
-          modelCooldowns[model] = Date.now() + COOLDOWN_503_MS;
-        }
         const durationMs = Date.now() - startTime;
+        if (isTimeout) {
+          pairCooldowns[pairKey] = Date.now() + COOLDOWN_503_MS;
+        }
+        saveMatrixStatus(model, keyItem.id, isTimeout ? "TIMEOUT" : "UNDEFINED", env, ctx);
         logWarn(model, keyItem.id, 0, isTimeout ? `Timeout (${ATTEMPT_TIMEOUT_MS / 1000}s)` : err.message, null, durationMs, env, ctx);
-        break;
+        continue;
       }
     }
   }

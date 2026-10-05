@@ -74,8 +74,16 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
   const allModels = discoveryData ? [...discoveryData.smart, ...discoveryData.lite] : Object.keys(matrix);
   const uniqueModels = [...new Set(allModels)];
 
-  // Определяем невалидные ключи и модели на основе БД
+  // Определяем невалидные ключи и модели на основе БД и Discovery
   const deadKeysFromDb = new Set();
+  if (discoveryData?.validatedKeys) {
+    for (const k of discoveryData.validatedKeys) {
+      if (k.isValid === false) {
+        deadKeysFromDb.add(k.id);
+      }
+    }
+  }
+
   const deadModelsFromDb = {};
   for (const pairKey in dbStates) {
     const row = dbStates[pairKey];
@@ -109,7 +117,7 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
         // JIT Reset для RPD и временных ошибок
         if (dbRow.status === "RPD") {
           status = (dbRow.updated_at >= todayMidnightMs) ? "RPD" : "-";
-        } else if (["503", "RPM", "TPM"].includes(dbRow.status)) {
+        } else if (["503", "RPM", "TPM", "TIMEOUT"].includes(dbRow.status)) {
           status = (now - dbRow.updated_at < 60000) ? dbRow.status : "-";
         } else {
           status = dbRow.status;
