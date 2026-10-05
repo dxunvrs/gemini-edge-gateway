@@ -1,6 +1,8 @@
 let allLogs = [];
 let renderedLogsCount = 0;
 const LOGS_CHUNK_SIZE = 50;
+let currentSortCol = "timestamp";
+let currentSortDir = "desc";
 
 const statusIndicator = document.getElementById("gateway-status");
 const refreshBtn = document.getElementById("refresh-btn");
@@ -56,9 +58,13 @@ async function loadDashboard() {
     allLogs = data.logs || [];
     document.getElementById("logs-counter").textContent = `${allLogs.length} ENTRIES`;
 
-    logsTbody.innerHTML = "";
-    renderedLogsCount = 0;
-    renderNextLogsChunk();
+    if (currentSortCol) {
+      sortLogs(currentSortCol, false);
+    } else {
+      logsTbody.innerHTML = "";
+      renderedLogsCount = 0;
+      renderNextLogsChunk();
+    }
 
     if (data.discovery?.hasMoreUnchecked) {
       statusIndicator.textContent = "VALIDATING NEXT BATCH...";
@@ -219,21 +225,7 @@ function renderMatrix(matrix, logs = []) {
 
     const cells = keys.map(k => {
       const item = matrix[m][k] || { hits: 0, status: "-" };
-      let statusText = item.status;
-
-      // If the model is dead (404 or limit: 0), it takes precedence at the intersection
-      if (deadModelStatus && (statusText === "-" || !statusText || statusText === "KEY_ERR")) {
-        statusText = deadModelStatus;
-      } else {
-        // If the key is dead (401/403/KEY_ERR), the entire column across active models is banned
-        const keyDeadLog = logs.find(l => l.key === k && parseStatusFromLog(l) === "KEY_ERR");
-        if (keyDeadLog || statusText === "KEY_ERR") {
-          statusText = "KEY_ERR";
-        } else if (!statusText || statusText === "-") {
-          const found = logs.find(l => l.model === m && l.key === k);
-          statusText = found ? parseStatusFromLog(found) : (item.hits > 0 ? "200" : "-");
-        }
-      }
+      const statusText = item.status || "-";
       const badgeClass = STATUS_MAP[statusText] || (statusText === "-" ? "status-none" : "status-undefined");
       return `<td class="matrix-cell"><span class="status-badge ${badgeClass}">${statusText}</span></td>`;
     }).join("");
@@ -278,6 +270,67 @@ function renderNextLogsChunk() {
   logsTbody.insertAdjacentHTML("beforeend", rowsHtml);
   renderedLogsCount += nextSlice.length;
 }
+
+function sortLogs(col, toggle = true) {
+  if (toggle) {
+    if (currentSortCol === col) {
+      currentSortDir = currentSortDir === "asc" ? "desc" : "asc";
+    } else {
+      currentSortCol = col;
+      currentSortDir = (col === "timestamp" || col === "durationMs") ? "desc" : "asc";
+    }
+  }
+
+  allLogs.sort((a, b) => {
+    let valA = a[col];
+    let valB = b[col];
+
+    if (valA == null) valA = "";
+    if (valB == null) valB = "";
+
+    if (col === "timestamp") {
+      const timeA = new Date(valA).getTime() || 0;
+      const timeB = new Date(valB).getTime() || 0;
+      return currentSortDir === "asc" ? timeA - timeB : timeB - timeA;
+    }
+
+    if (col === "status" || col === "durationMs") {
+      const numA = Number(valA) || 0;
+      const numB = Number(valB) || 0;
+      return currentSortDir === "asc" ? numA - numB : numB - numA;
+    }
+
+    const strA = String(valA).toLowerCase();
+    const strB = String(valB).toLowerCase();
+    if (strA < strB) return currentSortDir === "asc" ? -1 : 1;
+    if (strA > strB) return currentSortDir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  updateSortHeaders();
+  logsTbody.innerHTML = "";
+  renderedLogsCount = 0;
+  renderNextLogsChunk();
+}
+
+function updateSortHeaders() {
+  document.querySelectorAll("#logs-table th[data-col]").forEach(th => {
+    const col = th.getAttribute("data-col");
+    const baseText = th.textContent.replace(/[ ▲▼↑↓]/g, "").trim();
+    if (col === currentSortCol) {
+      th.textContent = `${baseText} ${currentSortDir === "asc" ? "▲" : "▼"}`;
+    } else {
+      th.textContent = baseText;
+    }
+  });
+}
+
+document.querySelectorAll("#logs-table th[data-col]").forEach(th => {
+  th.addEventListener("click", () => {
+    const col = th.getAttribute("data-col");
+    if (col) sortLogs(col, true);
+  });
+});
 
 logsContainer.addEventListener("scroll", () => {
   if (logsContainer.scrollTop + logsContainer.clientHeight >= logsContainer.scrollHeight - 100) {

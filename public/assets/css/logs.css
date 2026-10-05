@@ -48,6 +48,13 @@
   top: 0;
   z-index: 2;
   border-bottom: var(--border-term-sticky);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+#logs-table th:hover {
+  color: var(--c-accent);
 }
 
 .lvl-error {
