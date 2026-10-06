@@ -30,9 +30,20 @@
 > Выполнять SQL-команды создания таблиц вручную не требуется. Файл `schema.sql` автоматически применится к созданной базе данных в процессе первого развертывания через GitHub Actions.
 
 > [!tip]
-> ***На будущее***. Если вам когда-нибудь понадобится посмотреть полный ответ логов (включая подробные JSON-дампы ошибок с лимитами или кодами ответов Google API в колонке `details`), это можно сделать через веб-консоль Cloudflare D1.
+> ***На будущее***. Если вам когда-нибудь понадобится посмотреть полный ответ логов (включая подробные JSON-дампы ошибок с лимитами или кодами ответов Google API в колонке `details`), это можно сделать двумя способами:
 >
-> Перейдите по адресу вашего аккаунта **Storage & Databases** -> **D1 SQL Database** -> выберите `gemini-gateway-db` -> сверху вкладка **Console** и выполните SQL-запрос для вывода последних 100 логов:
+> **Способ А: Через веб-интерфейс Cloudflare Console**
+> - Перейдите по адресу вашего аккаунта **Storage & Databases** -> **D1 SQL Database** -> выберите `gemini-gateway-db`.
+> - Сверху откройте вкладку **Console** и выполните нужный SQL-запрос.
+>
+> **Способ Б: Через терминал с помощью Wrangler CLI**
+> Если у вас установлен NodeJS, вы можете отправлять SQL-запросы прямо из терминала (внутри папки проекта):
+> ```bash
+> # Выполнить SQL-запрос удаленно
+> npx wrangler d1 execute gemini-gateway-db --remote --command "SELECT timestamp, level, message, model, key_id, status, duration_ms FROM logs ORDER BY timestamp DESC LIMIT 100;"
+> ```
+>
+> Пример полезного SQL-запроса для вывода последних 100 логов:
 > ```sql
 > SELECT timestamp, level, message, model, key_id, status, duration_ms, details
 > FROM logs

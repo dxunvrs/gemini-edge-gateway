@@ -61,7 +61,7 @@ flowchart TD
     end
 
     subgraph GoogleResponse ["Ответ Google и обработка ошибок"]
-        AB -->|Таймаут 60с / AbortSignal| AC["modelCooldowns = now + 3 min -> matrix_state: TIMEOUT -> break к следующей модели"]
+        AB -->|Таймаут 60с / AbortSignal| AC["modelCooldowns = now + 3 min -> matrix_state: TIMEOUT -> break к следующей модели (замораживаем всю модель на 3 минуты)"]
         AB -->|200 OK| AD["Пайплайн SSE-стриминга в Zed"]
         AB -->|Код ошибки| AE["classifyGoogleError"]
 

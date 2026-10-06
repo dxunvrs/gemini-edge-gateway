@@ -94,7 +94,7 @@ flowchart TD
 
 Полная инструкция со всеми шагами: [docs/setup_guide.md](docs/setup_guide.md).
 
-## Локальная работа с сайтом
+## Локальная работа и управление SQL D1
 
 Для локального тестирования сайта с подключением к удаленной базе данных D1 и рабочим переменным выполните следующую команду:
 ```bash
@@ -102,6 +102,18 @@ npx wrangler dev --remote
 ```
 
 Эта команда запустит локальный сервер на http://localhost:8787. В процессе работы создается служебная папка `.wrangler/`, которая уже добавлена в `.gitignore` в этом репозитории.
+
+### Выполнение SQL-запросов к D1
+
+Вы можете просматривать логи и анализировать работу шлюза напрямую через SQL-запросы. Доступны два способа:
+
+1. **Через веб-консоль Cloudflare**:
+   В панели Cloudflare перейдите в **Storage & Databases** -> **D1 SQL Database** -> выберите `gemini-gateway-db` -> вкладка **Console**.
+
+2. **Через Wrangler CLI** (локально из терминала проекта):
+   ```bash
+   npx wrangler d1 execute gemini-gateway-db --remote --command "SELECT model, status, COUNT(*) as count FROM logs GROUP BY model, status;"
+   ```
 
 ## Pull Requests are Welcome
 

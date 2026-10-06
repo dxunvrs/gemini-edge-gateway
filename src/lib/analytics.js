@@ -1,6 +1,6 @@
 import { getPersistentLogs } from "./logger.js";
 import { getRouterLiveState } from "./router.js";
-import { getTodayMidnightUtc } from "./utils.js";
+import { getTodayMidnightUtc, DEFAULT_TIMEOUT_DELAY_MS } from "./utils.js";
 
 let matrix = {};
 let lastResponse = null;
@@ -96,7 +96,8 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
     formattedMatrix[model] = {};
     const isModel503 = (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) ||
       Object.values(dbStates).some(r => r.model === model && r.status === "503" && (now - r.updated_at < 60000));
-    const isModelTimeout = Object.values(dbStates).some(r => r.model === model && r.status === "TIMEOUT" && (now - r.updated_at < 60000));
+    const isModelTimeout = (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) ||
+      Object.values(dbStates).some(r => r.model === model && r.status === "TIMEOUT" && (now - r.updated_at < DEFAULT_TIMEOUT_DELAY_MS));
 
     for (const key of allKeys) {
       const pairKey = `${model}:${key.id}`;
@@ -130,8 +131,9 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
         status = "TIMEOUT";
       } else if (dbRow) {
         const effectiveDbStatus = dbRow.status === "429" ? "RPM" : dbRow.status;
+        const ttlMs = effectiveDbStatus === "TIMEOUT" ? DEFAULT_TIMEOUT_DELAY_MS : 60000;
         if (["503", "RPM", "TPM", "TIMEOUT"].includes(effectiveDbStatus)) {
-          status = (now - dbRow.updated_at < 60000) ? effectiveDbStatus : "-";
+          status = (now - dbRow.updated_at < ttlMs) ? effectiveDbStatus : "-";
         } else {
           status = effectiveDbStatus;
         }
