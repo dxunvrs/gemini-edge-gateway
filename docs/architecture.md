@@ -61,7 +61,7 @@ flowchart TD
     end
 
     subgraph GoogleResponse ["Ответ Google и обработка ошибок"]
-        AB -->|Таймаут 60с / AbortSignal| AC["pairCooldowns = now + 60s -> matrix_state: TIMEOUT -> continue к следующему ключу"]
+        AB -->|Таймаут 60с / AbortSignal| AC["modelCooldowns = now + 3 min -> matrix_state: TIMEOUT -> break к следующей модели"]
         AB -->|200 OK| AD["Пайплайн SSE-стриминга в Zed"]
         AB -->|Код ошибки| AE["classifyGoogleError"]
 
@@ -80,7 +80,7 @@ flowchart TD
         AJ --> Z
         AK --> Z
         AL --> Z
-        AC --> Z
+        AC --> W
     end
 
     subgraph Storage ["Хранилище Cloudflare D1"]

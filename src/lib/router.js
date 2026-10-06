@@ -5,6 +5,7 @@ import {
   ONE_HOUR_MS,
   COOLDOWN_503_MS,
   DEFAULT_RPM_DELAY_MS,
+  DEFAULT_TIMEOUT_DELAY_MS,
   getTodayMidnightUtc,
   getNextMidnightUtc,
   parseRetryDelayMs,
@@ -323,10 +324,15 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
         const isTimeout = err?.name === "TimeoutError" || err?.name === "AbortError";
         const durationMs = Date.now() - startTime;
         if (isTimeout) {
-          pairCooldowns[pairKey] = Date.now() + COOLDOWN_503_MS;
+          modelCooldowns[model] = Date.now() + DEFAULT_TIMEOUT_DELAY_MS;
+          for (const k of activeKeys) {
+            saveMatrixStatus(model, k.id, "TIMEOUT", env, ctx);
+          }
+          logWarn(model, keyItem.id, 0, `Timeout (${ATTEMPT_TIMEOUT_MS / 1000}s) - Model Frozen`, null, durationMs, env, ctx);
+          break;
         }
-        saveMatrixStatus(model, keyItem.id, isTimeout ? "TIMEOUT" : "UNDEFINED", env, ctx);
-        logWarn(model, keyItem.id, 0, isTimeout ? `Timeout (${ATTEMPT_TIMEOUT_MS / 1000}s)` : err.message, null, durationMs, env, ctx);
+        saveMatrixStatus(model, keyItem.id, "UNDEFINED", env, ctx);
+        logWarn(model, keyItem.id, 0, err.message, null, durationMs, env, ctx);
         continue;
       }
     }

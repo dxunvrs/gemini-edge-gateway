@@ -2,6 +2,7 @@ export const ONE_HOUR_MS = 60 * 60 * 1000;
 export const DAY_HOURS_MS = 24 * 60 * 60 * 1000;
 export const COOLDOWN_503_MS = 10 * 1000;
 export const DEFAULT_RPM_DELAY_MS = 60 * 1000;
+export const DEFAULT_TIMEOUT_DELAY_MS = 3 * 60 * 1000;
 
 export function getTodayMidnightUtc() {
   const d = new Date();
@@ -59,8 +60,7 @@ export function classifyGoogleError(statusCode, errorObj) {
     const isDaily = quotaIds.includes("requestsperday");
     if (isDaily) { return { type: "RPD" }; }
 
-    const isRpm = quotaIds.includes("requestsperminute");
-    if (isRpm) { return { type: "RPM" }; }
+    return { type: "RPM" };
   }
 
   return { type: "OTHER" };

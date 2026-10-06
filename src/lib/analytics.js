@@ -96,6 +96,7 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
     formattedMatrix[model] = {};
     const isModel503 = (liveState.modelCooldowns[model] && liveState.modelCooldowns[model] > now) ||
       Object.values(dbStates).some(r => r.model === model && r.status === "503" && (now - r.updated_at < 60000));
+    const isModelTimeout = Object.values(dbStates).some(r => r.model === model && r.status === "TIMEOUT" && (now - r.updated_at < 60000));
 
     for (const key of allKeys) {
       const pairKey = `${model}:${key.id}`;
@@ -114,8 +115,9 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       // 2. Мертвый ключ (KEY_ERR) -- красит всю колонку
       // 3. Исчерпанный суточный лимит (RPD) -- статус ячейки до 00:00 UTC
       // 4. Перегрузка модели (503) -- красит всю строку, кроме ячеек с RPD и KEY_ERR
-      // 5. Локальные временные статусы (TIMEOUT, RPM, TPM) -- до 60 секунд
-      // 6. Последний подтвержденный статус (200) или прочерк (-)
+      // 5. Таймаут модели (TIMEOUT) -- красит всю строку, кроме ячеек с RPD и KEY_ERR
+      // 6. Локальные временные статусы (RPM, TPM) -- до 60 секунд
+      // 7. Последний подтвержденный статус (200) или прочерк (-)
       if (isDeadModel) {
         status = (dbRow?.status === "limit: 0" || dbRow?.status === "404") ? dbRow.status : deadReason;
       } else if (isDeadKey) {
@@ -124,11 +126,14 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
         status = "RPD";
       } else if (isModel503) {
         status = "503";
+      } else if (isModelTimeout) {
+        status = "TIMEOUT";
       } else if (dbRow) {
-        if (["503", "RPM", "TPM", "TIMEOUT"].includes(dbRow.status)) {
-          status = (now - dbRow.updated_at < 60000) ? dbRow.status : "-";
+        const effectiveDbStatus = dbRow.status === "429" ? "RPM" : dbRow.status;
+        if (["503", "RPM", "TPM", "TIMEOUT"].includes(effectiveDbStatus)) {
+          status = (now - dbRow.updated_at < 60000) ? effectiveDbStatus : "-";
         } else {
-          status = dbRow.status;
+          status = effectiveDbStatus;
         }
       }
 
