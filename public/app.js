@@ -23,6 +23,7 @@ const STATUS_MAP = {
   "401": "status-keyerr",
   "403": "status-keyerr",
   "404": "status-404",
+  "TIMEOUT": "status-timeout",
   "UNDEFINED": "status-undefined",
 };
 

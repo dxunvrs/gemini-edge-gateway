@@ -58,7 +58,8 @@ export async function getDiscoveryData(keys, env = null, forceBatch = false) {
   if (keysToValidate.length > 0) {
     const batchPromises = keysToValidate.map(async (k) => {
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${k.key}`, {
+        const cleanKey = encodeURIComponent(k.key.trim());
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`, {
           signal: AbortSignal.timeout(5000),
         });
         return { id: k.id, key: k.key, isValid: res.ok, status: res.status };
@@ -98,9 +99,10 @@ export async function getDiscoveryData(keys, env = null, forceBatch = false) {
 
   // Запрашиваем список моделей через первый живой ключ (1 сетевой запрос)
   let rawModels = CACHED_DATA?.rawModels || [];
-  if (!CACHED_DATA) {
+  if (!CACHED_DATA && activeKeys.length > 0) {
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${activeKeys[0].key}`, {
+      const cleanKey = encodeURIComponent(activeKeys[0].key.trim());
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`, {
         signal: AbortSignal.timeout(5000),
       });
       if (res.ok) {

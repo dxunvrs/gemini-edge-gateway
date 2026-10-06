@@ -82,6 +82,8 @@
   --bg-model-cell: #d0d0d0;
   --st-undef-bg: #9ca3af;
   --st-undef-text: #111827;
+  --st-timeout-bg: #94a3b8;
+  --st-timeout-text: #0f172a;
   --st-none-text: #666666;
   --font-main: "SuisseIntl", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "SuisseIntlMono", monospace;
@@ -133,6 +135,8 @@
     --bg-model-cell: #262626;
     --st-undef-bg: #4b5563;
     --st-undef-text: #f9fafb;
+    --st-timeout-bg: #334155;
+    --st-timeout-text: #cbd5e1;
     --st-none-text: rgba(255, 255, 255, 0.4);
   }
 }
@@ -187,6 +191,8 @@
   --bg-model-cell: #262626;
   --st-undef-bg: #4b5563;
   --st-undef-text: #f9fafb;
+  --st-timeout-bg: #334155;
+  --st-timeout-text: #cbd5e1;
   --st-none-text: rgba(255, 255, 255, 0.4);
 }
 

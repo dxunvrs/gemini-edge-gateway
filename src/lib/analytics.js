@@ -132,7 +132,9 @@ export async function getAnalyticsSnapshot(discoveryData, allKeys, env) {
       } else if (dbRow) {
         const effectiveDbStatus = dbRow.status === "429" ? "RPM" : dbRow.status;
         const ttlMs = effectiveDbStatus === "TIMEOUT" ? DEFAULT_TIMEOUT_DELAY_MS : 60000;
-        if (["503", "RPM", "TPM", "TIMEOUT"].includes(effectiveDbStatus)) {
+        if (effectiveDbStatus === "RPD" && dbRow.updated_at >= todayMidnightMs) {
+          status = "RPD";
+        } else if (["503", "RPM", "TPM", "TIMEOUT"].includes(effectiveDbStatus)) {
           status = (now - dbRow.updated_at < ttlMs) ? effectiveDbStatus : "-";
         } else {
           status = effectiveDbStatus;

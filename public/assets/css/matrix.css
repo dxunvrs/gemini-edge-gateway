@@ -122,6 +122,11 @@
   color: var(--st-404-text);
 }
 
+.status-timeout {
+  background: var(--st-timeout-bg);
+  color: var(--st-timeout-text);
+}
+
 .status-undefined {
   background: var(--st-undef-bg);
   color: var(--st-undef-text);
