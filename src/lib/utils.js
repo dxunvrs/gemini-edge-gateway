@@ -29,20 +29,23 @@ export function parseRetryDelayMs(retryDelayStr, defaultMs = DEFAULT_RPM_DELAY_M
 }
 
 export function classifyGoogleError(statusCode, errorObj) {
-  if (statusCode === 404 || errorObj?.status === "NOT_FOUND") {
+  const status = errorObj?.status || "";
+  const message = errorObj?.message || "";
+  const lowerMessage = message.toLowerCase();
+
+  if (statusCode === 404 || status === "NOT_FOUND") {
     return { type: "NOT_FOUND" };
   }
-  const message = (errorObj?.message || "").toLowerCase();
 
-  if (message.includes("valid API key")) {
+  if (lowerMessage.includes("valid API key") || statusCode === 401 || statusCode === 403 || status === "PERMISSION_DENIED" || status === "UNAUTHENTICATED") {
     return { type: "AUTH" };
   }
 
-  if (message.includes("limit: 0")) {
+  if (lowerMessage.includes("limit: 0")) {
     return { type: "ZERO_QUOTA" };
   }
 
-  if (statusCode === 503 || statusCode === 500 || errorObj?.status === "UNAVAILABLE") {
+  if (statusCode === 503 || statusCode === 500 || status === "UNAVAILABLE" || status === "INTERNAL") {
     return { type: "UNAVAILABLE" };
   }
 
@@ -53,7 +56,7 @@ export function classifyGoogleError(statusCode, errorObj) {
   const quotaIds = violations.map((v) => (v.quotaId || "").toLowerCase()).join(" ");
   const quotaMetrics = violations.map((v) => (v.quotaMetric || "").toLowerCase()).join(" ");
 
-  if (statusCode === 429 || errorObj?.status === "RESOURCE_EXHAUSTED") {
+  if (statusCode === 429 || status === "RESOURCE_EXHAUSTED") {
     const isTpm = quotaIds.includes("tokenspermodelperminute") || quotaMetrics.includes("input_token_count");
     if (isTpm) { return { type: "TPM" }; }
 
@@ -63,5 +66,9 @@ export function classifyGoogleError(statusCode, errorObj) {
     return { type: "RPM" };
   }
 
-  return { type: "OTHER" };
+  if (statusCode === 400 || status === "INVALID_ARGUMENT") {
+    return { type: "INVALID_ARGUMENT", status, message };
+  }
+
+  return { type: "OTHER", status, message };
 }

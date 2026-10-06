@@ -300,7 +300,8 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
           const fallbackStatus = statusCode ? String(statusCode) : "UNDEFINED";
           saveMatrixStatus(model, keyItem.id, fallbackStatus, env, ctx);
-          logWarn(model, keyItem.id, statusCode, `API Error`, errorData, durationMs, env, ctx);
+          const errorMsg = errorObj?.message || errorObj?.status || "API Error";
+          logWarn(model, keyItem.id, statusCode, errorMsg, errorData, durationMs, env, ctx);
           continue;
         }
 
