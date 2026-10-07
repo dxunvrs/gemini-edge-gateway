@@ -200,7 +200,9 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
     if (modelCooldowns[model] && modelCooldowns[model] > Date.now()) {
       continue;
     }
-    const payload = basePayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
+    const headLimit = Math.min(basePayload.length, 500);
+    const modelReplacedHead = basePayload.slice(0, headLimit).replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
+    const payload = modelReplacedHead + basePayload.slice(headLimit);
     for (const keyItem of candidateKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
       if (deadKeys.has(keyItem.id)) continue;

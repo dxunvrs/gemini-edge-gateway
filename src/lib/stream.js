@@ -4,6 +4,8 @@ export function createGeminiStreamPipeline() {
   let initialThoughtFinished = false;
   let contentBuffer = "";
   let sseLineBuffer = "";
+  let emittedContentLength = 0;
+  let strippedThoughtBuffer = "";
 
   const decoder = new TextDecoder("utf-8");
   const encoder = new TextEncoder();
@@ -19,15 +21,17 @@ export function createGeminiStreamPipeline() {
       if (closeMatch) {
         inThought = false;
         initialThoughtFinished = true;
+        strippedThoughtBuffer += str.slice(0, closeMatch.index);
         return str.slice(closeMatch.index + closeMatch[0].length);
       }
 
-      // Если в конце строки оборванный тег закрытия мыслей — буферизуем
       const lastLt = str.lastIndexOf("<");
       if (lastLt !== -1 && !str.slice(lastLt).includes(">")) {
         contentBuffer = str.slice(lastLt);
+        strippedThoughtBuffer += str.slice(0, lastLt);
         return "";
       }
+      strippedThoughtBuffer += str;
       return "";
     }
 
@@ -41,6 +45,7 @@ export function createGeminiStreamPipeline() {
       if (immediateClose) {
         inThought = false;
         initialThoughtFinished = true;
+        strippedThoughtBuffer += rest.slice(0, immediateClose.index);
         return preText + rest.slice(immediateClose.index + immediateClose[0].length);
       }
       return preText;
@@ -60,8 +65,8 @@ export function createGeminiStreamPipeline() {
 
       for (let line of lines) {
         if (line.startsWith("data: ") && line.trim() !== "data: [DONE]") {
-          // Если мысли уже отфильтрованы и нет тулов — отдаем строку как есть
           if (initialThoughtFinished && !hasToolCalls && !line.includes('"tool_calls"')) {
+            emittedContentLength += line.length;
             controller.enqueue(encoder.encode(line + "\n"));
             continue;
           }
@@ -73,16 +78,23 @@ export function createGeminiStreamPipeline() {
             if (choice) {
               if (choice.delta?.tool_calls) {
                 hasToolCalls = true;
+                strippedThoughtBuffer = "";
               }
 
-              // Корректируем finish_reason для инструментов
               if (hasToolCalls && choice.finish_reason && choice.finish_reason.toLowerCase() === "stop") {
                 choice.finish_reason = "tool_calls";
               }
 
-              // Фильтруем теги рассуждений
               if (choice.delta && typeof choice.delta.content === "string") {
-                choice.delta.content = filterThoughts(choice.delta.content);
+                const filtered = filterThoughts(choice.delta.content);
+                choice.delta.content = filtered;
+                if (filtered.length > 0) {
+                  emittedContentLength += filtered.length;
+                  // Как только пошел реальный полезный ответ, мысли больше не нужны - освобождаем память
+                  if (strippedThoughtBuffer) {
+                    strippedThoughtBuffer = "";
+                  }
+                }
               }
             }
             line = "data: " + JSON.stringify(json);
@@ -96,6 +108,22 @@ export function createGeminiStreamPipeline() {
     flush(controller) {
       if (sseLineBuffer) {
         controller.enqueue(encoder.encode(sseLineBuffer));
+      }
+
+      // Защита от пустых ответов:
+      // если из-за обрезки мыслей не выведено ни одного символа и нет тулов, отдаем
+      // спасенные мысли обратно, чтобы диалог в Zed не завершался с пустой плашкой
+      if (emittedContentLength === 0 && !hasToolCalls && strippedThoughtBuffer.trim().length > 0) {
+        const fallbackChunk = {
+          choices: [
+            {
+              delta: { content: strippedThoughtBuffer },
+              finish_reason: "stop",
+            },
+          ],
+        };
+        controller.enqueue(encoder.encode("data: " + JSON.stringify(fallbackChunk) + "\n\n"));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       }
     },
   });
