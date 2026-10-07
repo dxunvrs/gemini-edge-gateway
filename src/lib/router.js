@@ -24,6 +24,10 @@ const deadModels = new Map();
 const lastRpdUnblock = {};
 let deadInitialized = false;
 
+let lastSuccessfulKeyId = null;
+let lastSuccessfulSmartModel = null;
+let lastSuccessfulLiteModel = null;
+
 export function saveMatrixStatus(model, keyId, status, env, ctx) {
   if (!env?.DB || !model || !keyId) return;
   const now = Date.now();
@@ -162,7 +166,23 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
 
   const headSnippet = rawText.slice(0, 500);
   const isLite = /"model"\s*:\s*"[^"]*lite/i.test(headSnippet);
-  const targetCascade = isLite ? cascades.lite : cascades.smart;
+  let targetCascade = isLite ? cascades.lite : cascades.smart;
+  const lastModel = isLite ? lastSuccessfulLiteModel : lastSuccessfulSmartModel;
+
+  if (lastModel && targetCascade[0] !== lastModel && !deadModels.has(lastModel) && (!modelCooldowns[lastModel] || modelCooldowns[lastModel] <= Date.now())) {
+    const idx = targetCascade.indexOf(lastModel);
+    if (idx > 0) {
+      targetCascade = [lastModel, ...targetCascade.toSpliced(idx, 1)];
+    }
+  }
+
+  let candidateKeys = activeKeys;
+  if (lastSuccessfulKeyId && candidateKeys.length > 0 && candidateKeys[0].id !== lastSuccessfulKeyId) {
+    const idx = candidateKeys.findIndex((k) => k.id === lastSuccessfulKeyId);
+    if (idx > 0) {
+      candidateKeys = [candidateKeys[idx], ...candidateKeys.toSpliced(idx, 1)];
+    }
+  }
 
   let hadTpmError = false;
   let hadRpdError = false;
@@ -181,7 +201,7 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
       continue;
     }
     const payload = basePayload.replace(/(?<!\\)"model"\s*:\s*"[^"]*"/, `"model":"${model}"`);
-    for (const keyItem of activeKeys) {
+    for (const keyItem of candidateKeys) {
       if (attemptsCount >= MAX_SUBREQUESTS) break;
       if (deadKeys.has(keyItem.id)) continue;
 
@@ -308,6 +328,13 @@ export async function executeStratifiedRouting(request, rawText, currentUser, ca
         logSuccess(model, keyItem.id, durationMs, env, ctx);
         recordSuccess(model, keyItem.id, currentUser, env, ctx);
         saveMatrixStatus(model, keyItem.id, "200", env, ctx);
+
+        lastSuccessfulKeyId = keyItem.id;
+        if (isLite) {
+          lastSuccessfulLiteModel = model;
+        } else {
+          lastSuccessfulSmartModel = model;
+        }
 
         const streamPipeline = createGeminiStreamPipeline();
         response.body.pipeTo(streamPipeline.writable).catch(() => { });

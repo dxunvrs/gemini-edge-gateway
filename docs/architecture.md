@@ -49,7 +49,8 @@ flowchart TD
     subgraph Router ["Каскадная маршрутизация (router.js)"]
         U --> V["Выбор каскада: smart/lite"]
         V --> V1["ensureDeadState: чтение matrix_state с JIT-фильтром RPD"]
-        V1 --> W["Цикл перебора моделей"]
+        V1 --> V2["Fast-Path: приоритизация последней успешной связки ключ+модель"]
+        V2 --> W["Цикл перебора моделей"]
         W --> X{"Проверка модели"}
         X -->|В deadModels или modelCooldowns| W
         X -->|Доступна| Y["Быстрая подмена model в начале basePayload"]
